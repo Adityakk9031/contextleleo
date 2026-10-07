@@ -12,7 +12,7 @@ A Rust lib + CLI (`contextleleo` package, CLI crate `contextleleo-cli`, binary `
 
 Workspace layout: root package is the lib; `cli/` is a workspace member with `default-members = ["cli"]` — bare `cargo run`/`cargo build` targets the CLI; `--workspace` covers the lib. Edition 2024, MSRV 1.96, crate-type `["cdylib", "rlib"]` (WASM + lib consumers).
 
-**Three big workstreams happened in this chat, in order:**
+**Workstreams from this chat, in order:**
 
 1. **Jev optimization (Phases 1–7)** — a context-budgeting pipeline that plans, allocates, and applies KEEP/COMPRESS/DROP decisions to session transcripts to fit a token budget.
    ```text
@@ -23,6 +23,8 @@ Workspace layout: root package is the lib; `cli/` is a workspace member with `de
 2. **Rename `txcript` → `contextleleo`** — crate, CLI binary, npm package, docs, test module paths. The checkout folder itself is still named `txcript-main` (the maintainer chose not to rename it); every identifier inside the code is `contextleleo`.
 
 3. **Freebuff harness adapter** — `src/harness/freebuff.rs` lets contextleleo read and continue sessions from the Freebuff desktop app's local store (`.freebuff` dir). Tests in `tests/integration/freebuff.rs` pin store round-trip fidelity, codec fixpoints through Common, and discovery. README's supported-agents table already carries the Freebuff row, and the `context` command was verified live against real Freebuff sessions in this chat (§13 shows `freebuff:e2748cef-…#8` chunk sources).
+
+4. **Wordmark rebuild (post-push fix)** — the README header image (`docs/assets/wordmark-light.svg` / `wordmark-dark.svg`) still drew the pixel letters **TXCRIPT** — invisible to text grep because the letters are vector shapes, not text. Both SVGs were regenerated (2026-10-07) spelling **CONTEXTLELEO** in the same style: 9×8-unit glyphs, 10-unit pitch, `viewBox 0 0 119 8`, `#1D1815` main + `#9A9A9A` dither accents (light variant) / `#F5F4F2` main (dark variant), `shape-rendering="crispEdges"`. Verified per-letter programmatically (re-parsed the written paths) and visually via browser screenshot. Note: `docs/assets/demo.gif` still shows the old name inside the terminal recording — regenerating it needs a re-recorded session, not an SVG edit.
 
 ## 2. Pipeline diagram (persistent session history → Jev retrieval → optimization → target agent)
 
