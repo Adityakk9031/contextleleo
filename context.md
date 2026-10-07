@@ -2,7 +2,7 @@
 
 **Purpose:** pick-anywhere handoff for continuing work on `contextleleo` (formerly `txcript`). It records the architecture, every hard decision, what was verified during the chat, and what remains.
 
-**Generated:** 2026-10-07 · **Working tree:** `/Users/adityakumarsingh/Downloads/txcript-main` (folder name NOT renamed) · **Version:** `0.14.4` · **Not a git repo** (no commit history; verification is test-based only) · `wc -l` ground truth today: `cli/src/lib.rs` 3 805, `src/retrieval.rs` 768.
+**Generated:** 2026-10-07 · **Working tree:** `/Users/adityakumarsingh/Downloads/txcript-main` (folder name NOT renamed) · **Version:** `0.14.4` · **Git remote (added 2026-10-07):** `origin` → https://github.com/Adityakk9031/contextleleo (private, branch `main`) — the tree was git-inited with a single initial commit covering all 145 tracked files; `target/` (13 GB), `.env`, `.freebuff/`, `.claude/` are gitignored · `wc -l` ground truth today: `cli/src/lib.rs` 3 805, `src/retrieval.rs` 768.
 
 ---
 
