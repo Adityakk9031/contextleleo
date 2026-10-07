@@ -1,0 +1,6 @@
+/target
+/pkg
+.env
+# Local personal stores / agent state — never push.
+.freebuff/
+.claude/

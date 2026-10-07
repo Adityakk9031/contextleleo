@@ -1,0 +1,31 @@
+{
+  "name": "contextleleo",
+  "version": "0.14.4",
+  "description": "Convert coding-agent session transcripts between harness formats.",
+  "keywords": [
+    "transcript",
+    "claude",
+    "codex",
+    "agent",
+    "wasm"
+  ],
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/skillsynchq/contextleleo#readme",
+  "bugs": {
+    "url": "https://github.com/skillsynchq/contextleleo/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skillsynchq/contextleleo.git"
+  },
+  "main": "pkg/contextleleo.js",
+  "types": "pkg/contextleleo.d.ts",
+  "files": [
+    "pkg"
+  ],
+  "scripts": {
+    "setup": "rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli --version 0.2.126 --locked",
+    "build": "cargo build -p contextleleo --lib --release --target wasm32-unknown-unknown --no-default-features --features wasm,search && wasm-bindgen target/wasm32-unknown-unknown/release/contextleleo.wasm --out-dir pkg --target nodejs",
+    "prepare": "bun run build"
+  }
+}
