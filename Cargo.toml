@@ -22,6 +22,9 @@ todo = "deny"
 unimplemented = "deny"
 mem_forget = "deny"
 unwrap_in_result = "deny"
+# `assert!(v.is_empty())` is the idiom used throughout the tests; the lint's
+# suggested `assert_eq!(v, [] as [T; 0])` is harder to read, so keep ours.
+assert_is_empty = "allow"
 
 # Keep overflow checks in release for untrusted transcript files.
 [profile.release]

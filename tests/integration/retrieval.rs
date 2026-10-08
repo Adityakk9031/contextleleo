@@ -363,7 +363,11 @@ fn pipeline_retrieves_optimizes_and_respects_budget() {
     .unwrap();
 
     assert!(!handoff.chunks.is_empty());
-    let selected: usize = handoff.chunks.iter().map(|chunk| chunk.tokens()).sum();
+    let selected: usize = handoff
+        .chunks
+        .iter()
+        .map(contextleleo::retrieval::RetrievedContext::tokens)
+        .sum();
     assert!(
         selected <= 60,
         "pre-gate capped chunk selection, got {selected}"

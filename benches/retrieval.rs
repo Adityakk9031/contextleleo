@@ -1,4 +1,10 @@
-#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used, missing_docs)]
+#![allow(
+    clippy::cast_possible_wrap,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_used,
+    missing_docs
+)]
 
 //! Retrieval benchmarks over a synthetic 40-session store: candidate search
 //! plus deterministic ranking, chunk assembly, the full retrieve → assemble
@@ -100,6 +106,7 @@ fn redis_session(index: usize) -> Transcript<Common> {
             text(Role::User, "Fix the Redis timeout issue in production.", 0),
             tool("redis-cli CONFIG GET maxConnections", 1),
             text(
+                Role::Assistant,
                 "maxConnections was increased from 20 to 100 — that fixed the timeout.",
                 2,
             ),
@@ -122,6 +129,7 @@ fn filler_session(index: usize, topic: &str) -> Transcript<Common> {
             ),
             tool(format!("grep -rn {first_word} src/"), 1),
             text(
+                Role::Assistant,
                 format!("The {topic} issue is fixed; nothing else changed."),
                 2,
             ),
@@ -187,14 +195,14 @@ fn bench_retrieval(c: &mut Criterion) {
             retriever
                 .retrieve(black_box(QUERY), black_box(&options))
                 .expect("retrieval succeeds")
-        })
+        });
     });
 
     let chunks = retriever
         .retrieve(QUERY, &options)
         .expect("retrieval succeeds");
     group.bench_function("assemble_chunks", |b| {
-        b.iter(|| assemble(black_box(&chunks), black_box(QUERY)))
+        b.iter(|| assemble(black_box(&chunks), black_box(QUERY)));
     });
 
     group.bench_function("pipeline_with_jev_budget", |b| {
@@ -206,7 +214,7 @@ fn bench_retrieval(c: &mut Criterion) {
                 black_box(Some(BUDGET)),
             )
             .expect("pipeline succeeds")
-        })
+        });
     });
 
     group.bench_function("jev_full_history_no_retrieval", |b| {
@@ -217,7 +225,7 @@ fn bench_retrieval(c: &mut Criterion) {
                 &jev::DeterministicScorer::default(),
             )
             .expect("handoff succeeds")
-        })
+        });
     });
 
     group.finish();

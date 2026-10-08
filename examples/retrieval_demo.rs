@@ -82,6 +82,9 @@ fn result(t: String, call_secs: i64, secs: i64, is_error: bool) -> Message {
 /// The handoff query a continuation would ask.
 const QUERY: &str = "We fixed the Redis timeout issue before. What configuration did we change?";
 
+// A demo script: the linear print-out is the point, and the ratio below is a
+// display-only float.
+#[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
 fn main() {
     let now = ts(200 * 86_400);
     // Four scenario sessions plus filler, the shape of a real store: the
@@ -172,7 +175,7 @@ fn main() {
     for i in 0..40 {
         let id = format!("filler-{i}");
         corpus.push(Transcript::new(
-            meta(&id, 5 + i as i64 % 60, &format!("filler session {i}")),
+            meta(&id, 5 + i64::from(i) % 60, &format!("filler session {i}")),
             vec![text(
                 &format!("routine work item {i}: updated dependencies and docs."),
                 0,
@@ -212,10 +215,7 @@ fn main() {
     )
     .expect("pipeline succeeds");
 
-    println!(
-        "Full history:      {:>6} tokens across {sessions_indexed} sessions",
-        all_tokens
-    );
+    println!("Full history:      {all_tokens:>6} tokens across {sessions_indexed} sessions");
     println!(
         "Retrieved:         {:>6} tokens in {} chunks (retrieval {:?})",
         handoff.assembled_tokens,

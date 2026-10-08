@@ -169,6 +169,7 @@ fn sample_common(id: &str, cwd: &str) -> Transcript<Common> {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // one long fixture table: the point of the test
 fn codec_maps_parts_blocks_and_tool_results() {
     let thread = freebuff::ThreadRow {
         id: "t-1".to_string(),
@@ -183,7 +184,7 @@ fn codec_maps_parts_blocks_and_tool_results() {
         execution_mode: "local".to_string(),
         created_at: ts_millis(0),
         updated_at: ts_millis(30),
-        extra: Default::default(),
+        extra: serde_json::Map::default(),
     };
     let messages = vec![
         freebuff::MessageRow {
@@ -201,7 +202,7 @@ fn codec_maps_parts_blocks_and_tool_results() {
             attachments_json: "[]".to_string(),
             metrics_json: "{}".to_string(),
             ts: ts_millis(10),
-            extra: Default::default(),
+            extra: serde_json::Map::default(),
         },
         freebuff::MessageRow {
             seq: 2,
@@ -220,7 +221,7 @@ fn codec_maps_parts_blocks_and_tool_results() {
             attachments_json: "[]".to_string(),
             metrics_json: "{}".to_string(),
             ts: ts_millis(20),
-            extra: Default::default(),
+            extra: serde_json::Map::default(),
         },
     ];
     let native = Transcript::new(
@@ -252,7 +253,7 @@ fn codec_maps_parts_blocks_and_tool_results() {
             assert!(is_error);
             match content {
                 ToolOutput::Text(text) => assert_eq!(text, "stdout:\nok\n"),
-                other => panic!("expected text output, got {other:?}"),
+                other @ ToolOutput::Json(_) => panic!("expected text output, got {other:?}"),
             }
         }
         other => panic!("expected tool result, got {other:?}"),
@@ -448,8 +449,8 @@ fn store_save_updates_existing_thread_and_fingerprints_track_updates() {
         .save(&Freebuff::from_common(&common).unwrap())
         .unwrap();
 
-    let before = store.fingerprints(&[saved.id.clone()]).unwrap();
-    assert!(!before.get(&saved.id).map(String::is_empty).unwrap_or(true));
+    let before = store.fingerprints(std::slice::from_ref(&saved.id)).unwrap();
+    assert!(!before.get(&saved.id).is_none_or(String::is_empty));
 
     // Extend the conversation and save again: the fingerprint moves.
     let mut extended = common.clone();
@@ -468,7 +469,7 @@ fn store_save_updates_existing_thread_and_fingerprints_track_updates() {
     store
         .save(&Freebuff::from_common(&extended).unwrap())
         .unwrap();
-    let after = store.fingerprints(&[saved.id.clone()]).unwrap();
+    let after = store.fingerprints(std::slice::from_ref(&saved.id)).unwrap();
     assert_ne!(
         before.get(&saved.id),
         after.get(&saved.id),
