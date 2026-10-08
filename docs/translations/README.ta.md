@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="உரிமம்"></a>
 </p>
 
@@ -33,10 +33,10 @@ contextleleo என்பது ஏஜென்ட் அமர்வுகள�
 
 ## CLI-ஐ முயற்சிக்கவும்
 
-macOS, Linux அல்லது Windows-க்கான இயங்கும் கோப்பை [வெளியீடுகள் பக்கத்திலிருந்து](https://github.com/skillsynchq/contextleleo/releases) பதிவிறக்கவும். அல்லது Rust 1.96 அல்லது அதற்குப் பிந்தைய பதிப்பைப் பயன்படுத்தி மூலக் குறியீட்டிலிருந்து நிறுவவும்:
+macOS, Linux அல்லது Windows-க்கான இயங்கும் கோப்பை [வெளியீடுகள் பக்கத்திலிருந்து](https://github.com/Adityakk9031/contextleleo/releases) பதிவிறக்கவும். அல்லது Rust 1.96 அல்லது அதற்குப் பிந்தைய பதிப்பைப் பயன்படுத்தி மூலக் குறியீட்டிலிருந்து நிறுவவும்:
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Claude Code அமர்வைக் கண்டறிந்து Codex-இல் தொடருங்கள்:
@@ -166,7 +166,7 @@ Simple பகுத்தறிவு, கருவி அழைப்புக�
 - [உரையாடல் பதிவு வடிவங்கள்](../formats/README.md): சேமிப்பக அமைப்பு, வடிவங்களுக்கு இடையிலான பொருத்தங்கள், வரம்புகள், ஆதாரங்கள் மற்றும் பின்னோக்குப் பொறியியல் குறிப்புகள்.
 - [உருவாக்கம்](../usage.md#development) மற்றும் [சோதனை வழிகாட்டி](../../tests/README.md).
 - [பங்களிப்பு வழிகாட்டி](../../CONTRIBUTING.md) · [பாதுகாப்புக் குறைபாட்டைப் புகாரளிக்கவும்](../../SECURITY.md).
-- [மாற்றங்களின் பதிவு](../../CHANGELOG.md) · [சிக்கலைப் புகாரளிக்கவும்](https://github.com/skillsynchq/contextleleo/issues).
+- [மாற்றங்களின் பதிவு](../../CHANGELOG.md) · [சிக்கலைப் புகாரளிக்கவும்](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## உரிமம்
 

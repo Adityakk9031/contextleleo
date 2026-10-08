@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="Licence"></a>
 </p>
 
@@ -33,10 +33,10 @@ Créez des outils de recherche, de lecture et d'édition de sessions à partir d
 
 ## Essayer la CLI
 
-Téléchargez un binaire pour macOS, Linux ou Windows depuis les [versions publiées](https://github.com/skillsynchq/contextleleo/releases), ou installez depuis les sources avec Rust 1.96 ou une version ultérieure :
+Téléchargez un binaire pour macOS, Linux ou Windows depuis les [versions publiées](https://github.com/Adityakk9031/contextleleo/releases), ou installez depuis les sources avec Rust 1.96 ou une version ultérieure :
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Trouvez une session Claude Code et poursuivez-la dans Codex :
@@ -166,7 +166,7 @@ La conversion transfère l'historique de la conversation. La destination fournit
 - [Formats de transcription](../formats/README.md) : organisation du stockage, correspondances et limites, avec sources et notes de rétro-ingénierie.
 - [Développement](../usage.md#development) et [guide des tests](../../tests/README.md).
 - [Contribuer](../../CONTRIBUTING.md) · [Signaler une vulnérabilité](../../SECURITY.md).
-- [Historique des modifications](../../CHANGELOG.md) · [Signaler un problème](https://github.com/skillsynchq/contextleleo/issues).
+- [Historique des modifications](../../CHANGELOG.md) · [Signaler un problème](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## Licence
 

@@ -2,7 +2,7 @@
 
 **Purpose:** pick-anywhere handoff for continuing work on `contextleleo` (formerly `txcript`). It records the architecture, every hard decision, what was verified during the chat, and what remains.
 
-**Generated:** 2026-10-07 · **Working tree:** `/Users/adityakumarsingh/Downloads/txcript-main` (folder name NOT renamed) · **Version:** `0.14.4` · **Git remote (added 2026-10-07):** `origin` → https://github.com/Adityakk9031/contextleleo (private, branch `main`) — the tree was git-inited with a single initial commit covering all 145 tracked files; `target/` (13 GB), `.env`, `.freebuff/`, `.claude/` are gitignored · `wc -l` ground truth today: `cli/src/lib.rs` 3 805, `src/retrieval.rs` 768.
+**Generated:** 2026-10-07 · **Working tree:** `/Users/adityakumarsingh/Downloads/txcript-main` (folder name NOT renamed) · **Version:** `0.14.4` · **Git remote (added 2026-10-07):** `origin` → https://github.com/Adityakk9031/contextleleo (**public** as of 2026-10-08, branch `main`) — the tree was git-inited with a single initial commit covering all 145 tracked files; `target/` (13 GB), `.env`, `.freebuff/`, `.claude/` are gitignored · `wc -l` ground truth today: `cli/src/lib.rs` 3 805, `src/retrieval.rs` 768.
 
 ---
 
@@ -278,7 +278,14 @@ Nothing above is speculative — each item is a real gap that needs real work, r
 5. **Index-build latency UX** — observed in chat: every `context` invocation re-discovers and re-parses all sessions before ranking (~1 s here); `--cache` mitigates it, but consider surfacing cache-hit/miss in the report line or a default cache location if `context` becomes a daily driver.
 6. **CLI flags not yet surfaced** — `--min-relevance` and `--one-chunk-per-session` exist in `RetrievalOptions` but are not CLI flags; add if there is demand (the lib already has them).
 7. **Embedding retriever drop-in** — an `EmbeddingRetriever` implementing `ContextRetriever` behind its own feature, wired into `cmd_context`/`prepend_retrieved` via a small provider switch. That is the extension path the trait exists for; nothing to do until someone asks.
-8. **README wordmark caching (demo blocker, cosmetic)** — the CONTEXTLELEO SVGs on `origin/main` are byte-identical to local (blob SHA `73d33213…`, both light and dark, verified via the GitHub contents API), so the stale TXCRIPT render on GitHub was a cache, not content. The README now requests `…svg?v=3` to force a refetch (a hard refresh clears the browser copy). `docs/assets/demo.gif` **still contains the old name inside the recording** — that needs a re-record, not an asset edit.
+8. **Customer-facing links repointed** — every `skillsynchq/contextleleo` reference (badges, install,
+   releases, issues, CHANGELOG, CONTRIBUTING, SECURITY, `.github/`, `Cargo.toml`, `cli/Cargo.toml`,
+   `package.json`, `cliff.toml`, `docs/`) was rewritten to `Adityakk9031/contextleleo` and the repo
+   was made public. `crates.io`/`npm`/`docs.rs` already use the `contextleleo` package name, so
+   their badges go live once those packages are published — publishing itself was **not** done.
+   The legacy `TRANSCRIPT_<HARNESS>_RESUME_CMD` env var (and its `CONTEXTLELEO_*` siblings) is left
+   as-is; renaming it is a breaking change.
+9. **README wordmark caching (demo blocker, cosmetic)** — the CONTEXTLELEO SVGs on `origin/main` are byte-identical to local (blob SHA `73d33213…`, both light and dark, verified via the GitHub contents API), so the stale TXCRIPT render on GitHub was a cache, not content. The README now requests `…svg?v=3` to force a refetch (a hard refresh clears the browser copy). `docs/assets/demo.gif` **still contains the old name inside the recording** — that needs a re-record, not an asset edit.
 
 ### 12.5 Freebuff adapter leftovers (§1 stream 3)
 

@@ -288,7 +288,7 @@ const matches = JSON.parse(index.query(JSON.stringify({ pattern: "relay bug" }))
 To build the wasm from source instead:
 
 ```sh
-git clone https://github.com/skillsynchq/contextleleo.git
+git clone https://github.com/Adityakk9031/contextleleo.git
 cd contextleleo
 bun run setup        # once: wasm target + wasm-bindgen-cli
 bun run build        # produces ./pkg

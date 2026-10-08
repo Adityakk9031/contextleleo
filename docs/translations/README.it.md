@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="Licenza"></a>
 </p>
 
@@ -33,10 +33,10 @@ Crea strumenti per cercare, visualizzare e modificare sessioni usando un unico m
 
 ## Prova la CLI
 
-Scarica un binario per macOS, Linux o Windows dalle [release](https://github.com/skillsynchq/contextleleo/releases), oppure installa dai sorgenti con Rust 1.96 o successivo:
+Scarica un binario per macOS, Linux o Windows dalle [release](https://github.com/Adityakk9031/contextleleo/releases), oppure installa dai sorgenti con Rust 1.96 o successivo:
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Trova una sessione Claude Code e proseguila in Codex:
@@ -166,7 +166,7 @@ La conversione trasferisce la cronologia della conversazione. La destinazione fo
 - [Formati delle trascrizioni](../formats/README.md): struttura degli archivi, corrispondenze e limiti, con fonti e note di reverse engineering.
 - [Sviluppo](../usage.md#development) e [guida ai test](../../tests/README.md).
 - [Contribuire](../../CONTRIBUTING.md) · [Segnalare una vulnerabilità](../../SECURITY.md).
-- [Registro delle modifiche](../../CHANGELOG.md) · [Segnala un problema](https://github.com/skillsynchq/contextleleo/issues).
+- [Registro delle modifiche](../../CHANGELOG.md) · [Segnala un problema](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## Licenza
 

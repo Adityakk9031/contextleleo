@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="授權條款"></a>
 </p>
 
@@ -33,10 +33,10 @@ contextleleo 是用來轉換代理工作階段的函式庫。在 Claude Code 中
 
 ## 試用 CLI
 
-從[發行頁面](https://github.com/skillsynchq/contextleleo/releases)下載適用於 macOS、Linux 或 Windows 的執行檔，或使用 Rust 1.96 以上版本從原始碼安裝：
+從[發行頁面](https://github.com/Adityakk9031/contextleleo/releases)下載適用於 macOS、Linux 或 Windows 的執行檔，或使用 Rust 1.96 以上版本從原始碼安裝：
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 找到一個 Claude Code 工作階段，並在 Codex 中繼續：
@@ -166,7 +166,7 @@ Simple 也能表示推理、工具呼叫、結果、圖片和中繼資料。`con
 - [對話紀錄格式](../formats/README.md)：儲存配置、對應關係和限制，附有來源與逆向工程筆記。
 - [開發](../usage.md#development)與[測試指南](../../tests/README.md)。
 - [貢獻指南](../../CONTRIBUTING.md) · [回報安全漏洞](../../SECURITY.md).
-- [變更紀錄](../../CHANGELOG.md) · [回報問題](https://github.com/skillsynchq/contextleleo/issues)。
+- [變更紀錄](../../CHANGELOG.md) · [回報問題](https://github.com/Adityakk9031/contextleleo/issues)。
 
 ## 授權條款
 

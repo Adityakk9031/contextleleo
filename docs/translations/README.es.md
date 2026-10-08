@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="Licencia"></a>
 </p>
 
@@ -33,10 +33,10 @@ Crea buscadores, visores y editores de sesiones sobre un único modelo de transc
 
 ## Probar la CLI
 
-Descarga un binario para macOS, Linux o Windows desde [Releases](https://github.com/skillsynchq/contextleleo/releases), o instala desde el código fuente con Rust 1.96 o posterior:
+Descarga un binario para macOS, Linux o Windows desde [Releases](https://github.com/Adityakk9031/contextleleo/releases), o instala desde el código fuente con Rust 1.96 o posterior:
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Busca una sesión de Claude Code y continúala en Codex:
@@ -166,7 +166,7 @@ La conversión transfiere el historial de la conversación. El destino aporta su
 - [Formatos de transcripción](../formats/README.md): estructura del almacenamiento, correspondencias y limitaciones, con fuentes y notas de ingeniería inversa.
 - [Desarrollo](../usage.md#development) y [guía de pruebas](../../tests/README.md).
 - [Contribuir](../../CONTRIBUTING.md) · [Informar de una vulnerabilidad](../../SECURITY.md).
-- [Historial de cambios](../../CHANGELOG.md) · [Informar de un problema](https://github.com/skillsynchq/contextleleo/issues).
+- [Historial de cambios](../../CHANGELOG.md) · [Informar de un problema](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## Licencia
 

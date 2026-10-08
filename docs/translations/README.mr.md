@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="परवाना"></a>
 </p>
 
@@ -33,10 +33,10 @@ contextleleo ही एजंटची सेशन रूपांतरित 
 
 ## CLI वापरून पाहा
 
-[रिलीज पृष्ठावरून](https://github.com/skillsynchq/contextleleo/releases) macOS, Linux किंवा Windows साठी तयार बायनरी डाउनलोड करा, किंवा Rust 1.96 किंवा त्यानंतरची आवृत्ती वापरून सोर्समधून इन्स्टॉल करा:
+[रिलीज पृष्ठावरून](https://github.com/Adityakk9031/contextleleo/releases) macOS, Linux किंवा Windows साठी तयार बायनरी डाउनलोड करा, किंवा Rust 1.96 किंवा त्यानंतरची आवृत्ती वापरून सोर्समधून इन्स्टॉल करा:
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Claude Code मधील सेशन शोधा आणि Codex मध्ये पुढे सुरू करा:
@@ -166,7 +166,7 @@ Simple मध्ये तर्कविचार, साधनांना क
 - [संवाद रेकॉर्डची स्वरूपे](../formats/README.md): साठवणीची रचना, रूपांतरातील जुळवणी आणि मर्यादा, स्रोत व रिव्हर्स इंजिनिअरिंगच्या नोंदींसह.
 - [विकास](../usage.md#development) आणि [चाचणी मार्गदर्शक](../../tests/README.md).
 - [योगदान मार्गदर्शक](../../CONTRIBUTING.md) · [सुरक्षा त्रुटी कळवा](../../SECURITY.md).
-- [बदलांचा इतिहास](../../CHANGELOG.md) · [समस्या नोंदवा](https://github.com/skillsynchq/contextleleo/issues).
+- [बदलांचा इतिहास](../../CHANGELOG.md) · [समस्या नोंदवा](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## परवाना
 

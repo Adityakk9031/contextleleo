@@ -351,7 +351,7 @@ Rules:
   harness regenerates (directory listings, git status) is best dropped.
 
 Full spec, including stop_reason and thinking signatures:
-https://github.com/skillsynchq/contextleleo/blob/main/docs/formats/simple.md
+https://github.com/Adityakk9031/contextleleo/blob/main/docs/formats/simple.md
 ````
 
 </details>

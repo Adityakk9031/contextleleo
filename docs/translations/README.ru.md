@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="Лицензия"></a>
 </p>
 
@@ -33,10 +33,10 @@
 
 ## Попробовать CLI
 
-Скачайте готовый исполняемый файл для macOS, Linux или Windows со [страницы релизов](https://github.com/skillsynchq/contextleleo/releases) или установите из исходного кода с Rust 1.96 или новее:
+Скачайте готовый исполняемый файл для macOS, Linux или Windows со [страницы релизов](https://github.com/Adityakk9031/contextleleo/releases) или установите из исходного кода с Rust 1.96 или новее:
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Найдите сессию Claude Code и продолжите её в Codex:
@@ -166,7 +166,7 @@ Simple также представляет рассуждения, вызовы 
 - [Форматы транскриптов](../formats/README.md): устройство хранилищ, сопоставления и ограничения со ссылками на источники и заметками об обратной разработке.
 - [Разработка](../usage.md#development) и [руководство по тестированию](../../tests/README.md).
 - [Участие в разработке](../../CONTRIBUTING.md) · [Сообщить об уязвимости](../../SECURITY.md).
-- [История изменений](../../CHANGELOG.md) · [Сообщить о проблеме](https://github.com/skillsynchq/contextleleo/issues).
+- [История изменений](../../CHANGELOG.md) · [Сообщить о проблеме](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## Лицензия
 

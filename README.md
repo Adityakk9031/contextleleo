@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="License"></a>
 </p>
 
@@ -31,10 +31,10 @@ Build session search, viewers, and editors against one transcript model. context
 
 ## Try the CLI
 
-Download a binary for macOS, Linux, or Windows from [Releases](https://github.com/skillsynchq/contextleleo/releases), or install from source with Rust 1.96 or newer:
+Download a binary for macOS, Linux, or Windows from [Releases](https://github.com/Adityakk9031/contextleleo/releases), or install from source with Rust 1.96 or newer:
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Find a Claude Code session and continue it in Codex:
@@ -169,7 +169,7 @@ Conversion carries conversation history. The destination supplies its own system
 - [Transcript formats](docs/formats/README.md): storage layouts, mappings, and limitations, with sources and reverse-engineering notes.
 - [Development](docs/usage.md#development) and [test guide](tests/README.md).
 - [Contributing](CONTRIBUTING.md) · [Report a security vulnerability](SECURITY.md).
-- [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/skillsynchq/contextleleo/issues).
+- [Changelog](CHANGELOG.md) · [Report an issue](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## License
 

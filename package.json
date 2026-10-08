@@ -10,13 +10,13 @@
     "wasm"
   ],
   "license": "Apache-2.0",
-  "homepage": "https://github.com/skillsynchq/contextleleo#readme",
+  "homepage": "https://github.com/Adityakk9031/contextleleo#readme",
   "bugs": {
-    "url": "https://github.com/skillsynchq/contextleleo/issues"
+    "url": "https://github.com/Adityakk9031/contextleleo/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/skillsynchq/contextleleo.git"
+    "url": "git+https://github.com/Adityakk9031/contextleleo.git"
   },
   "main": "pkg/contextleleo.js",
   "types": "pkg/contextleleo.d.ts",

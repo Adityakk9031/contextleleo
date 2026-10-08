@@ -3,7 +3,7 @@ name: Bug report
 about: Report something that did not work as expected.
 ---
 
-<!-- Report security vulnerabilities privately at https://github.com/skillsynchq/contextleleo/security/advisories/new. -->
+<!-- Report security vulnerabilities privately at https://github.com/Adityakk9031/contextleleo/security/advisories/new. -->
 
 ## What happened?
 

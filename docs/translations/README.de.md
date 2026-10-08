@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="Lizenz"></a>
 </p>
 
@@ -33,10 +33,10 @@ Entwickle Suchfunktionen, Ansichten und Editoren für Sitzungen auf Basis eines 
 
 ## CLI ausprobieren
 
-Lade eine Binärdatei für macOS, Linux oder Windows von der [Releases-Seite](https://github.com/skillsynchq/contextleleo/releases) herunter, oder installiere aus dem Quellcode mit Rust 1.96 oder neuer:
+Lade eine Binärdatei für macOS, Linux oder Windows von der [Releases-Seite](https://github.com/Adityakk9031/contextleleo/releases) herunter, oder installiere aus dem Quellcode mit Rust 1.96 oder neuer:
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Finde eine Claude-Code-Sitzung und setze sie in Codex fort:
@@ -166,7 +166,7 @@ Die Konvertierung überträgt den Gesprächsverlauf. Das Ziel stellt seine eigen
 - [Transkriptformate](../formats/README.md): Speicheraufbau, Zuordnungen und Einschränkungen mit Quellen und Reverse-Engineering-Notizen.
 - [Entwicklung](../usage.md#development) und [Testleitfaden](../../tests/README.md).
 - [Mitwirken](../../CONTRIBUTING.md) · [Eine Sicherheitslücke melden](../../SECURITY.md).
-- [Änderungsprotokoll](../../CHANGELOG.md) · [Problem melden](https://github.com/skillsynchq/contextleleo/issues).
+- [Änderungsprotokoll](../../CHANGELOG.md) · [Problem melden](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## Lizenz
 

@@ -7,7 +7,7 @@ the pull requests merged between releases, following
 
 Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 [npm](https://www.npmjs.com/package/contextleleo), and
-[GitHub Releases](https://github.com/skillsynchq/contextleleo/releases).
+[GitHub Releases](https://github.com/Adityakk9031/contextleleo/releases).
 
 ## Unreleased
 
@@ -28,55 +28,55 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
   teammates' `teamName`/`agentName`. Filled at discovery time, not only on load. Writing
   lineage into native formats is not implemented yet.
 
-## [0.14.4](https://github.com/skillsynchq/contextleleo/compare/v0.14.3...v0.14.4) - 2026-09-13
+## [0.14.4](https://github.com/Adityakk9031/contextleleo/compare/v0.14.3...v0.14.4) - 2026-09-13
 
 ### Fixed
 
-- Sanitize replayed tool names ([#49](https://github.com/skillsynchq/contextleleo/pull/49))
+- Sanitize replayed tool names ([#49](https://github.com/Adityakk9031/contextleleo/pull/49))
 
-## [0.14.3](https://github.com/skillsynchq/contextleleo/compare/v0.14.2...v0.14.3) - 2026-09-12
-
-### Fixed
-
-- Export freeform tool inputs as objects ([#44](https://github.com/skillsynchq/contextleleo/pull/44))
-
-## [0.14.2](https://github.com/skillsynchq/contextleleo/compare/v0.14.1...v0.14.2) - 2026-09-11
+## [0.14.3](https://github.com/Adityakk9031/contextleleo/compare/v0.14.2...v0.14.3) - 2026-09-12
 
 ### Fixed
 
-- Unique transcript entry ids across consecutive assistants ([#41](https://github.com/skillsynchq/contextleleo/pull/41))
-- Roll back failed mints with deleteAgent ([#42](https://github.com/skillsynchq/contextleleo/pull/42))
+- Export freeform tool inputs as objects ([#44](https://github.com/Adityakk9031/contextleleo/pull/44))
 
-## [0.14.1](https://github.com/skillsynchq/contextleleo/compare/v0.14.0...v0.14.1) - 2026-09-11
+## [0.14.2](https://github.com/Adityakk9031/contextleleo/compare/v0.14.1...v0.14.2) - 2026-09-11
 
 ### Fixed
 
-- Discover all agents and title from profile name ([#40](https://github.com/skillsynchq/contextleleo/pull/40))
+- Unique transcript entry ids across consecutive assistants ([#41](https://github.com/Adityakk9031/contextleleo/pull/41))
+- Roll back failed mints with deleteAgent ([#42](https://github.com/Adityakk9031/contextleleo/pull/42))
 
-## [0.14.0](https://github.com/skillsynchq/contextleleo/compare/v0.13.0...v0.14.0) - 2026-09-11
+## [0.14.1](https://github.com/Adityakk9031/contextleleo/compare/v0.14.0...v0.14.1) - 2026-09-11
+
+### Fixed
+
+- Discover all agents and title from profile name ([#40](https://github.com/Adityakk9031/contextleleo/pull/40))
+
+## [0.14.0](https://github.com/Adityakk9031/contextleleo/compare/v0.13.0...v0.14.0) - 2026-09-11
 
 ### Added
 
-- Add Grok Bot transcript harness ([#39](https://github.com/skillsynchq/contextleleo/pull/39))
+- Add Grok Bot transcript harness ([#39](https://github.com/Adityakk9031/contextleleo/pull/39))
 
 ### Fixed
 
-- Map old_string/new_string to camelCase in denormalize_cursor_args ([#23](https://github.com/skillsynchq/contextleleo/pull/23))
-- Preserve custom and unknown tool casing across OpenCode and Pi ([#31](https://github.com/skillsynchq/contextleleo/pull/31))
+- Map old_string/new_string to camelCase in denormalize_cursor_args ([#23](https://github.com/Adityakk9031/contextleleo/pull/23))
+- Preserve custom and unknown tool casing across OpenCode and Pi ([#31](https://github.com/Adityakk9031/contextleleo/pull/31))
 
-## [0.13.0](https://github.com/skillsynchq/contextleleo/compare/v0.12.1...v0.13.0) - 2026-09-04
+## [0.13.0](https://github.com/Adityakk9031/contextleleo/compare/v0.12.1...v0.13.0) - 2026-09-04
 
 ### Added
 
-- Add `resume` alias for `continue` command ([#16](https://github.com/skillsynchq/contextleleo/pull/16))
-- Add interactive context cropping ([#21](https://github.com/skillsynchq/contextleleo/pull/21))
+- Add `resume` alias for `continue` command ([#16](https://github.com/Adityakk9031/contextleleo/pull/16))
+- Add interactive context cropping ([#21](https://github.com/Adityakk9031/contextleleo/pull/21))
 
 ### Fixed
 
-- Drop non-standard format annotations from tool schemas ([#17](https://github.com/skillsynchq/contextleleo/pull/17))
-- Derive artifact search origin from message role ([#26](https://github.com/skillsynchq/contextleleo/pull/26))
+- Drop non-standard format annotations from tool schemas ([#17](https://github.com/Adityakk9031/contextleleo/pull/17))
+- Derive artifact search origin from message role ([#26](https://github.com/Adityakk9031/contextleleo/pull/26))
 
-## [0.12.1](https://github.com/skillsynchq/contextleleo/compare/v0.12.0...v0.12.1) - 2026-09-01
+## [0.12.1](https://github.com/Adityakk9031/contextleleo/compare/v0.12.0...v0.12.1) - 2026-09-01
 
 ### Changed
 
@@ -85,14 +85,14 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 - Cursor Desktop discovery and loads scale with the session instead of the
   whole database.
 
-## [0.12.0](https://github.com/skillsynchq/contextleleo/compare/v0.11.0...v0.12.0) - 2026-08-25
+## [0.12.0](https://github.com/Adityakk9031/contextleleo/compare/v0.11.0...v0.12.0) - 2026-08-25
 
 ### Added
 
 - ChatGPT as a live, pull-only harness: list and continue ChatGPT
   conversations in a local harness.
 
-## [0.11.0](https://github.com/skillsynchq/contextleleo/compare/v0.10.0...v0.11.0) - 2026-08-24
+## [0.11.0](https://github.com/Adityakk9031/contextleleo/compare/v0.10.0...v0.11.0) - 2026-08-24
 
 ### Added
 
@@ -109,7 +109,7 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 
 - Terminal query helpers are gated to unix.
 
-## [0.10.0](https://github.com/skillsynchq/contextleleo/compare/v0.9.1...v0.10.0) - 2026-08-21
+## [0.10.0](https://github.com/Adityakk9031/contextleleo/compare/v0.9.1...v0.10.0) - 2026-08-21
 
 ### Added
 
@@ -126,7 +126,7 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 
 - The wasm bundle is built from the contextleleo package.
 
-## [0.9.1](https://github.com/skillsynchq/contextleleo/compare/v0.9.0...v0.9.1) - 2026-08-20
+## [0.9.1](https://github.com/Adityakk9031/contextleleo/compare/v0.9.0...v0.9.1) - 2026-08-20
 
 ### Added
 
@@ -134,13 +134,13 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
   types and a `run_session` entry point.
 - A persistent search cache for `query`.
 
-## [0.9.0](https://github.com/skillsynchq/contextleleo/compare/v0.8.1...v0.9.0) - 2026-08-20
+## [0.9.0](https://github.com/Adityakk9031/contextleleo/compare/v0.8.1...v0.9.0) - 2026-08-20
 
 ### Added
 
 - Cowork, Claude desktop's local agent mode, as a harness.
 
-## [0.8.1](https://github.com/skillsynchq/contextleleo/compare/v0.8.0...v0.8.1) - 2026-08-19
+## [0.8.1](https://github.com/Adityakk9031/contextleleo/compare/v0.8.0...v0.8.1) - 2026-08-19
 
 ### Fixed
 
@@ -150,14 +150,14 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 
 - README translations moved under `docs/translations/`.
 
-## [0.8.0](https://github.com/skillsynchq/contextleleo/compare/v0.7.0...v0.8.0) - 2026-08-19
+## [0.8.0](https://github.com/Adityakk9031/contextleleo/compare/v0.7.0...v0.8.0) - 2026-08-19
 
 ### Added
 
 - Simple, an interchange pseudo-harness for agents without a native store.
 - `continue` accepts a Simple document from a file or stdin.
 
-## [0.7.0](https://github.com/skillsynchq/contextleleo/compare/v0.6.0...v0.7.0) - 2026-08-18
+## [0.7.0](https://github.com/Adityakk9031/contextleleo/compare/v0.6.0...v0.7.0) - 2026-08-18
 
 ### Added
 
@@ -169,7 +169,7 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 - opencode import satisfies the stricter session and message schema.
 - CLI quality gaps found against replay-cli are closed.
 
-## [0.6.0](https://github.com/skillsynchq/contextleleo/compare/v0.5.0...v0.6.0) - 2026-08-17
+## [0.6.0](https://github.com/Adityakk9031/contextleleo/compare/v0.5.0...v0.6.0) - 2026-08-17
 
 ### Added
 
@@ -183,26 +183,26 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 - npm publishing uses trusted publishing and is triggered by version tags
   again.
 
-## [0.5.0](https://github.com/skillsynchq/contextleleo/compare/v0.4.3...v0.5.0) - 2026-08-08
+## [0.5.0](https://github.com/Adityakk9031/contextleleo/compare/v0.4.3...v0.5.0) - 2026-08-08
 
 ### Added
 
 - Claude Code local commands are modelled as `Tool::Command`.
 - Experimental `--move` for `contextleleo continue`.
 
-## [0.4.3](https://github.com/skillsynchq/contextleleo/compare/v0.4.2...v0.4.3) - 2026-08-03
+## [0.4.3](https://github.com/Adityakk9031/contextleleo/compare/v0.4.2...v0.4.3) - 2026-08-03
 
 ### Added
 
 - `Session::updated_at`.
 
-## [0.4.2](https://github.com/skillsynchq/contextleleo/compare/v0.4.1...v0.4.2) - 2026-07-30
+## [0.4.2](https://github.com/Adityakk9031/contextleleo/compare/v0.4.1...v0.4.2) - 2026-07-30
 
 ### Fixed
 
 - Harness session stores resolve correctly on Windows.
 
-## [0.4.1](https://github.com/skillsynchq/contextleleo/compare/v0.4.0...v0.4.1) - 2026-07-20
+## [0.4.1](https://github.com/Adityakk9031/contextleleo/compare/v0.4.0...v0.4.1) - 2026-07-20
 
 ### Added
 
@@ -213,7 +213,7 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 - Exported codex rollouts name a real `model_provider`.
 - Non-`ses` session ids are re-shaped for opencode export.
 
-## [0.4.0](https://github.com/skillsynchq/contextleleo/compare/v0.3.0...v0.4.0) - 2026-07-17
+## [0.4.0](https://github.com/Adityakk9031/contextleleo/compare/v0.3.0...v0.4.0) - 2026-07-17
 
 ### Added
 
@@ -227,7 +227,7 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 
 - `query` indexes in parallel and interactive navigation is responsive.
 
-## [0.3.0](https://github.com/skillsynchq/contextleleo/compare/v0.2.0...v0.3.0) - 2026-07-06
+## [0.3.0](https://github.com/Adityakk9031/contextleleo/compare/v0.2.0...v0.3.0) - 2026-07-06
 
 ### Added
 
@@ -242,13 +242,13 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 - Literal occurrences rank above every gapped fuzzy alignment.
 - MSRV tracks the latest stable Rust.
 
-## [0.2.0](https://github.com/skillsynchq/contextleleo/compare/v0.1.0...v0.2.0) - 2026-07-01
+## [0.2.0](https://github.com/Adityakk9031/contextleleo/compare/v0.1.0...v0.2.0) - 2026-07-01
 
 ### Changed
 
 - The public API is hierarchical.
 
-## [0.1.0](https://github.com/skillsynchq/contextleleo/releases/tag/v0.1.0) - 2026-07-01
+## [0.1.0](https://github.com/Adityakk9031/contextleleo/releases/tag/v0.1.0) - 2026-07-01
 
 ### Added
 

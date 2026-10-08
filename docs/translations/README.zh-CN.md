@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="许可证"></a>
 </p>
 
@@ -33,10 +33,10 @@ contextleleo 是一个用于转换代理会话的库。在 Claude Code 中开始
 
 ## 试用 CLI
 
-从[发布页面](https://github.com/skillsynchq/contextleleo/releases)下载适用于 macOS、Linux 或 Windows 的二进制文件，或使用 Rust 1.96 及以上版本从源码安装：
+从[发布页面](https://github.com/Adityakk9031/contextleleo/releases)下载适用于 macOS、Linux 或 Windows 的二进制文件，或使用 Rust 1.96 及以上版本从源码安装：
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 找到一个 Claude Code 会话，并在 Codex 中继续：
@@ -166,7 +166,7 @@ Simple 也能表示推理、工具调用、结果、图片和元数据。`contex
 - [会话记录格式](../formats/README.md)：存储布局、映射关系和限制，附有来源与逆向工程笔记。
 - [开发](../usage.md#development)和[测试指南](../../tests/README.md)。
 - [贡献指南](../../CONTRIBUTING.md) · [报告安全漏洞](../../SECURITY.md).
-- [更新日志](../../CHANGELOG.md) · [报告问题](https://github.com/skillsynchq/contextleleo/issues)。
+- [更新日志](../../CHANGELOG.md) · [报告问题](https://github.com/Adityakk9031/contextleleo/issues)。
 
 ## 许可证
 

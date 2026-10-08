@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.96"
 description = "CLI for listing, searching, and continuing contextleleo sessions."
 license = "Apache-2.0"
-repository = "https://github.com/skillsynchq/contextleleo"
+repository = "https://github.com/Adityakk9031/contextleleo"
 # Not published: crates.io ships only the contextleleo library. Install the CLI
 # from git (`cargo install --git … contextleleo-cli`) or a local checkout.
 publish = false
@@ -65,7 +65,7 @@ workspace = true
 
 # Prebuilt binaries are attached to every GitHub Release, one archive per
 # target with the executable at the archive root. Install without compiling:
-#   cargo binstall --git https://github.com/skillsynchq/contextleleo contextleleo-cli
+#   cargo binstall --git https://github.com/Adityakk9031/contextleleo contextleleo-cli
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/contextleleo-{ target }{ archive-suffix }"
 bin-dir = "{ bin }{ binary-ext }"

@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="Licença"></a>
 </p>
 
@@ -33,10 +33,10 @@ Crie ferramentas de busca, visualização e edição de sessões com um único m
 
 ## Experimente a CLI
 
-Baixe um binário para macOS, Linux ou Windows em [Releases](https://github.com/skillsynchq/contextleleo/releases), ou instale a partir do código-fonte com Rust 1.96 ou mais recente:
+Baixe um binário para macOS, Linux ou Windows em [Releases](https://github.com/Adityakk9031/contextleleo/releases), ou instale a partir do código-fonte com Rust 1.96 ou mais recente:
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Encontre uma sessão do Claude Code e continue no Codex:
@@ -166,7 +166,7 @@ A conversão transfere o histórico da conversa. O destino fornece suas própria
 - [Formatos de transcrição](../formats/README.md): estrutura do armazenamento, mapeamentos e limitações, com fontes e notas de engenharia reversa.
 - [Desenvolvimento](../usage.md#development) e [guia de testes](../../tests/README.md).
 - [Contribuir](../../CONTRIBUTING.md) · [Relatar uma vulnerabilidade](../../SECURITY.md).
-- [Histórico de alterações](../../CHANGELOG.md) · [Relatar um problema](https://github.com/skillsynchq/contextleleo/issues).
+- [Histórico de alterações](../../CHANGELOG.md) · [Relatar um problema](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## Licença
 

@@ -15,7 +15,7 @@
   <a href="https://crates.io/crates/contextleleo"><img src="https://img.shields.io/crates/v/contextleleo?logo=rust&color=4c71f2" alt="crates.io"></a>
   <a href="https://www.npmjs.com/package/contextleleo"><img src="https://img.shields.io/npm/v/contextleleo?logo=npm&color=4c71f2" alt="npm"></a>
   <a href="https://docs.rs/contextleleo"><img src="https://img.shields.io/docsrs/contextleleo?logo=docsdotrs" alt="docs.rs"></a>
-  <a href="https://github.com/skillsynchq/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/skillsynchq/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
+  <a href="https://github.com/Adityakk9031/contextleleo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Adityakk9031/contextleleo/ci.yml?branch=main&logo=github&label=ci" alt="CI"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="라이선스"></a>
 </p>
 
@@ -33,10 +33,10 @@ contextleleo는 에이전트 세션을 변환하는 라이브러리입니다. Cl
 
 ## CLI 사용해 보기
 
-[릴리스](https://github.com/skillsynchq/contextleleo/releases)에서 macOS, Linux, Windows용 바이너리를 내려받거나, Rust 1.96 이상으로 소스에서 설치하세요.
+[릴리스](https://github.com/Adityakk9031/contextleleo/releases)에서 macOS, Linux, Windows용 바이너리를 내려받거나, Rust 1.96 이상으로 소스에서 설치하세요.
 
 ```sh
-cargo install --git https://github.com/skillsynchq/contextleleo contextleleo-cli --locked
+cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
 Claude Code 세션을 찾아 Codex에서 이어 가세요.
@@ -166,7 +166,7 @@ Simple은 추론, 도구 호출, 결과, 이미지, 메타데이터도 표현합
 - [대화 기록 형식](../formats/README.md): 저장 구조, 변환 대응 관계, 제한, 출처, 리버스 엔지니어링 기록.
 - [개발](../usage.md#development) 및 [테스트 가이드](../../tests/README.md).
 - [기여 안내](../../CONTRIBUTING.md) · [보안 취약점 신고](../../SECURITY.md).
-- [변경 기록](../../CHANGELOG.md) · [문제 보고](https://github.com/skillsynchq/contextleleo/issues).
+- [변경 기록](../../CHANGELOG.md) · [문제 보고](https://github.com/Adityakk9031/contextleleo/issues).
 
 ## 라이선스
 

@@ -125,6 +125,6 @@ inspected in the installed Claude Desktop app's shipped web client on
 2026-09-28. Contract tests use synthetic sessions and a local HTTP server;
 no customer transcripts or credentials are included in fixtures.
 
-Related reports: [missing cloud sessions (#61)](https://github.com/skillsynchq/contextleleo/issues/61)
-and [missing Cowork files (#62)](https://github.com/skillsynchq/contextleleo/issues/62).
+Related reports: [missing cloud sessions (#61)](https://github.com/Adityakk9031/contextleleo/issues/61)
+and [missing Cowork files (#62)](https://github.com/Adityakk9031/contextleleo/issues/62).
 

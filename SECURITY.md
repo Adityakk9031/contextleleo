@@ -1,6 +1,6 @@
 # Security
 
-Report vulnerabilities privately through [GitHub](https://github.com/skillsynchq/contextleleo/security/advisories/new).
+Report vulnerabilities privately through [GitHub](https://github.com/Adityakk9031/contextleleo/security/advisories/new).
 
 Include your contextleleo version and steps or a small example that reproduces the problem. Explain the impact.
 

@@ -4,17 +4,17 @@ Open an issue before opening a pull request.
 
 ## Propose a feature
 
-Propose new ways to work with sessions in an [RFC issue](https://github.com/skillsynchq/contextleleo/issues/new?template=rfc.md). Explain what you want to do and show a small example of the input and expected output. Describe how you think it should work. We can work out API and CLI details in the issue.
+Propose new ways to work with sessions in an [RFC issue](https://github.com/Adityakk9031/contextleleo/issues/new?template=rfc.md). Explain what you want to do and show a small example of the input and expected output. Describe how you think it should work. We can work out API and CLI details in the issue.
 
 You can start coding while we discuss the proposal. Every new feature needs discussion in the issue.
 
 ## Report a bug
 
-[Open a bug report](https://github.com/skillsynchq/contextleleo/issues/new?template=bug_report.md). Include your contextleleo version, the agents and their versions, and the command or code you ran. Explain what you expected and what happened instead.
+[Open a bug report](https://github.com/Adityakk9031/contextleleo/issues/new?template=bug_report.md). Include your contextleleo version, the agents and their versions, and the command or code you ran. Explain what you expected and what happened instead.
 
 Attach the smallest session that still reproduces the problem. Real sessions are welcome after you remove private information. Check the whole file, including tool output and metadata, before uploading it.
 
-For vulnerabilities, use [GitHub's private reporting](https://github.com/skillsynchq/contextleleo/security/advisories/new). See the [security policy](SECURITY.md).
+For vulnerabilities, use [GitHub's private reporting](https://github.com/Adityakk9031/contextleleo/security/advisories/new). See the [security policy](SECURITY.md).
 
 ## Submit a pull request
 
@@ -29,7 +29,7 @@ Cover changed behavior with tests and update any affected docs. Follow the [test
 Use the Rust version listed in [Cargo.toml](Cargo.toml) or newer.
 
 ```sh
-git clone https://github.com/skillsynchq/contextleleo.git
+git clone https://github.com/Adityakk9031/contextleleo.git
 cd contextleleo
 cargo build --workspace
 cargo test --workspace --all-features
