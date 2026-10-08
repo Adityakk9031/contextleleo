@@ -253,7 +253,20 @@ The test file grew from its earlier 468-line draft to 560 lines as the pipeline 
 | `cargo test --workspace --all-features` | exit 0 — **530 passed; 0 failed; 1 ignored** (doc-test; two compile-fail doctests pass as designed) |
 | `cargo check --no-default-features` | exit 0 (lib + CLI compile without default features) |
 | `cargo fmt --all -- --check` | **exit 0 after `cargo fmt --all` was applied** (the run immediately preceding this doc reformatted retrieval sources; see "Formatting cleanup" below) |
-| `cargo clippy --workspace --all-features` | **exit 0 — 0 warnings, 0 errors** (cleaned this pass; see below) |
+| `cargo clippy --workspace --all-features` | **exit 0 — 0 warnings, 0 errors** (cleaned earlier this pass; see below) |
+| `RUSTFLAGS=-D warnings cargo clippy --workspace --all-targets --all-features` | **exit 0 — 0 warnings** — this is the CI command and it needed `--all-targets`; see the CI note below |
+| GitHub Actions `ci.yml` | **all 7 jobs green** (stable + windows lint/test, wasm32, MSRV 1.96, crates.io dry-run, npm dry-run, CLI release build) — the badge reads `build: passing` |
+
+**CI was red until 2026-10-08 and had never passed** (every push failed `cargo clippy
+--workspace --all-targets` under `RUSTFLAGS=-D warnings`, which the earlier local checks never
+ran). The retrieval **bench did not compile** at all — two `text(...)` calls omitted the `Role`
+argument — and the new-in-1.99 `assert_is_empty` lint plus ~15 pedantic lints fired across
+test/example/bench code. Fixed: the bench args, the example (inline `format!` args,
+`i64::from`, scoped `allow(too_many_lines, cast_precision_loss)`), the freebuff test
+(`Map::default()`, `slice::from_ref`, `is_none_or`, a narrowed match arm), and the retrieval
+test's redundant closure. `assert_is_empty` is now **allowed workspace-wide** in `Cargo.toml`
+(its suggested `assert_eq!(v, [] as [T; 0])` is less readable than `assert!(v.is_empty())`).
+Re-verified with the exact CI commands, then confirmed green on Actions.
 
 **Clippy warnings (now 0):** every site from the previous revision was fixed — the two
 `assigning_clones` sites became `clone_from`; the lossy `as f32` casts are covered by a scoped,
