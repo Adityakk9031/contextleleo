@@ -13,6 +13,15 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
 
 ### Added
 
+- Add a read-only context-retrieval layer (`contextleleo::retrieval`): rank matching history across
+  every stored session by keyword, file path, symbol, error, and tool signals, keep each chunk
+  traceable to its `session#message`, and hand the assembled context to Jev so it fits a token
+  budget. Deterministic and local; the `ContextRetriever` trait leaves room for other backends.
+- Add the `context` command: retrieve the ranked history for a query, optionally optimized to a
+  `--budget`. Read-only — no stored session is modified.
+- Add `continue --retrieve <query>`: prepend the retrieved context to a handoff, then let `--jev`
+  optimize the whole to the budget.
+- Add the Freebuff harness (read and continue; `continue` opens the app).
 - Add read-side session lineage (`Meta::lineage`): fork/continue/spawn relationships read from
   Codex's `session_meta` (subagent spawns, guardian review, `/fork`), pi/Campfire's
   `parentSession` (`/fork`, `/clone`), OpenCode's `session.parent_id`, and Claude Code

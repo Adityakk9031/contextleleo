@@ -253,15 +253,17 @@ The test file grew from its earlier 468-line draft to 560 lines as the pipeline 
 | `cargo test --workspace --all-features` | exit 0 — **530 passed; 0 failed; 1 ignored** (doc-test; two compile-fail doctests pass as designed) |
 | `cargo check --no-default-features` | exit 0 (lib + CLI compile without default features) |
 | `cargo fmt --all -- --check` | **exit 0 after `cargo fmt --all` was applied** (the run immediately preceding this doc reformatted retrieval sources; see "Formatting cleanup" below) |
-| `cargo clippy --workspace --all-features` | exit 0 (no errors); **17 warnings**, breakdown below |
+| `cargo clippy --workspace --all-features` | **exit 0 — 0 warnings, 0 errors** (cleaned this pass; see below) |
 
-**Clippy warnings (17; 15 unique sites, exact locations & re-measured AFTER the fmt run):**
-
-- `src/harness/pi.rs:711:23` — "the borrowed expression implements the required traits" (`needless_borrow`). **Pre-existing** before this work; out of scope unless asked.
-- `src/retrieval.rs` ×9 — "assigning the result of `Clone::clone()` may be inefficient" ×2 (212:13, 213:13), lossy `usize`/`u32` → f32 casts ×4 (373:26, 373:40, 379:26, 379:47), "unnecessary closure used with `bool::then`" (491:36), "this `if` statement can be collapsed" (517:9), "called `map(<f>).unwrap_or_else(<g>)` on an `Option`" (643:24).
-- `cli/src/lib.rs` ×4–5 — 524:41 ("derefed type is same as origin"), 1869:5 (extend-instead-of-append inside `prepend_retrieved`'s merge), 1907:13 (a second site in `cmd_context`; re-check the exact lint on your next run), 2251:1 (`too_many_arguments` on `continue_session`). The 17-warning total spans 15 unique sites workspace-wide; re-tally after fixing rather than trusting any list blindly.
-
-Before the run that produced this list, `cargo fmt --all` ran and `--check` verified exit 0, so these line numbers are post-format (use them as-is; they drift only when the files themselves change).
+**Clippy warnings (now 0):** every site from the previous revision was fixed — the two
+`assigning_clones` sites became `clone_from`; the lossy `as f32` casts are covered by a scoped,
+commented `#[allow(clippy::cast_precision_loss)]` on `chunk_score`/`rank_hits`; `bool::then` →
+`then_some`; the nested `if let` collapsed to a let-chain; `map(..).unwrap_or_else(..)` →
+`map_or_else`; the CLI's redundant `as_deref` dropped; `extend(common.body.drain(..))` →
+`append(&mut common.body)`; `_sessions` renamed to `sessions`; and the pre-existing
+`pi.rs:711` `needless_borrow` fixed (dropped the `&` on `.and_then(&expand)`). `continue_session`
+gained `#[allow(clippy::too_many_arguments)]` (8 args after `retrieve`; grouping into a struct was
+not worth the churn). The tree was re-verified green (530 tests) after these edits.
 
 **Formatting cleanup:** during this session `cargo fmt --all` was applied once and immediately verified with `--check` (exit 0). The files it touched: `src/retrieval.rs`, `benches/retrieval.rs`, `examples/retrieval_demo.rs`, `cli/src/lib.rs`, and `tests/integration/retrieval.rs`. This was formatting only — no semantic change — and the full 530-test suite was re-run green *after* it (exit 0, `cargo_test_exit=0` captured explicitly). **If this tree lands in CI, re-run `cargo test --workspace --all-features` once after any further reformat.**
 
@@ -269,13 +271,14 @@ Before the run that produced this list, `cargo fmt --all` ran and `--check` veri
 
 Nothing above is speculative — each item is a real gap that needs real work, roughly in priority order.
 
-1. **Clean up the 9 retrieval clippy warnings** (§11) — an hour or two, inside `src/retrieval.rs` mostly, starting from a bench-able green tree. Leave `pi.rs:711` unless asked (out of scope).
-2. **`cargo clippy --pedantic` sweep** — the workspace denies/warns pedantic-by-default (see `[workspace.lints.clippy]` in Cargo.toml: pedantic warn, unwrap/expect/panic deny); after fixing the retrieval warnings, re-run workspace-wide to be sure nothing else crept in.
-3. **Docs** — README + `docs/usage.md` **do not yet mention `context` or `continue --retrieve`** (README's "Other ways to work with your sessions" block and `docs/usage.md`'s CLI section both stop at view/crop/export/mcp). Add: a `context` command block in the same style as the `view`/`crop` blocks, a `continue --retrieve` bullet in the CLI list, a "Read-only: stored sessions are never modified" sentence, and (for stream 3) the `docs/formats/freebuff.md` page (§12.5).
-4. **CHANGELOG.md's Unreleased section predates this work** — it currently lists only the session-lineage feature. Add `### Added` entries for the retrieval layer, the `context` command, `continue --retrieve`, and the Freebuff harness before the next release.
+1. ~~**Clean up the 9 retrieval clippy warnings**~~ — **DONE (this pass).** All retrieval + CLI + pi warnings fixed; `cargo clippy` reports 0 (§11).
+2. ~~**`cargo fmt` / clippy re-run**~~ — **DONE.** `cargo fmt --all` clean, clippy 0 warnings, `cargo test` 530 pass.
+3. ~~**Docs**~~ — **DONE (this pass).** `README.md` now lists `context` in the CLI block and documents retrieval + `continue --retrieve`; `docs/usage.md` has a new **Context retrieval** section. `docs/formats/freebuff.md` **exists** (verified, 5 960 bytes) — the §12.5 open question is closed.
+4. ~~**CHANGELOG.md's Unreleased**~~ — **DONE (this pass).** `### Added` now lists the retrieval layer, the `context` command, `continue --retrieve`, and the Freebuff harness, ahead of the lineage entry.
 5. **Index-build latency UX** — observed in chat: every `context` invocation re-discovers and re-parses all sessions before ranking (~1 s here); `--cache` mitigates it, but consider surfacing cache-hit/miss in the report line or a default cache location if `context` becomes a daily driver.
 6. **CLI flags not yet surfaced** — `--min-relevance` and `--one-chunk-per-session` exist in `RetrievalOptions` but are not CLI flags; add if there is demand (the lib already has them).
 7. **Embedding retriever drop-in** — an `EmbeddingRetriever` implementing `ContextRetriever` behind its own feature, wired into `cmd_context`/`prepend_retrieved` via a small provider switch. That is the extension path the trait exists for; nothing to do until someone asks.
+8. **README wordmark caching (demo blocker, cosmetic)** — the CONTEXTLELEO SVGs on `origin/main` are byte-identical to local (blob SHA `73d33213…`, both light and dark, verified via the GitHub contents API), so the stale TXCRIPT render on GitHub was a cache, not content. The README now requests `…svg?v=3` to force a refetch (a hard refresh clears the browser copy). `docs/assets/demo.gif` **still contains the old name inside the recording** — that needs a re-record, not an asset edit.
 
 ### 12.5 Freebuff adapter leftovers (§1 stream 3)
 

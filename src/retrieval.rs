@@ -209,8 +209,8 @@ impl ContextRetriever for IndexRetriever<'_> {
         let mut run = |pattern: &str| {
             let mut search = Query::fuzzy(pattern.to_string());
             search.limit = Some(limit);
-            search.harnesses = options.harnesses.clone();
-            search.cwd = options.cwd.clone();
+            search.harnesses.clone_from(&options.harnesses);
+            search.cwd.clone_from(&options.cwd);
             search.hits_per_doc = Some(12);
             // Tool output is searched too: errors, stack traces, and config
             // values live in results, and the default query scope skips it.
@@ -345,7 +345,9 @@ fn path_terms(query: &str) -> Vec<String> {
 
 /// Score one chunk against the query's terms. `weights` sums the signals;
 /// the total is clamped to 1.0 at the end.
-#[allow(clippy::too_many_arguments)]
+// Weighted signals use `as f32` on small, bounded counts; the running total
+// is clamped to 1.0, so f32 mantissa precision is not a concern here.
+#[allow(clippy::too_many_arguments, clippy::cast_precision_loss)]
 fn chunk_score(
     content: &str,
     origin: Origin,
@@ -441,6 +443,7 @@ fn chunk_score(
 // ── ranking hits into chunks ───────────────────────────────────────────
 
 /// Rank one document's hits into scored chunks.
+#[allow(clippy::cast_precision_loss)] // hours-since math on a bounded span
 fn rank_hits(
     key: &DocKey,
     meta: &Meta,
@@ -488,7 +491,7 @@ fn rank_hits(
             RetrievedContext {
                 source: SourceReference {
                     session: key.clone(),
-                    message_index: (hit.span.0.start < hit.span.0.end).then(|| hit.span.0.start),
+                    message_index: (hit.span.0.start < hit.span.0.end).then_some(hit.span.0.start),
                 },
                 content: hit.line.clone(),
                 relevance: relevance.min(1.0),
@@ -514,10 +517,10 @@ fn select_within_budget(
             break;
         }
         let cost = chunk.tokens();
-        if let Some(cap) = max_tokens {
-            if cost > cap.saturating_sub(spent) {
-                continue;
-            }
+        if let Some(cap) = max_tokens
+            && cost > cap.saturating_sub(spent)
+        {
+            continue;
         }
         spent += cost;
         chosen.push(chunk);
@@ -640,10 +643,7 @@ pub fn assemble(chunks: &[RetrievedContext], query: &str) -> Transcript<Common> 
         Message {
             role: Role::User,
             content: vec![Block::Text { text: ask }],
-            timestamp: chunks
-                .first()
-                .map(|c| c.session_time)
-                .unwrap_or_else(Utc::now),
+            timestamp: chunks.first().map_or_else(Utc::now, |c| c.session_time),
             model: None,
             stop_reason: None,
             usage: None,

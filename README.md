@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg">
-    <img src="docs/assets/wordmark-light.svg" alt="contextleleo" width="600">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg?v=3">
+    <img src="docs/assets/wordmark-light.svg?v=3" alt="contextleleo" width="600">
   </picture>
 </p>
 
@@ -50,10 +50,19 @@ Other ways to work with your sessions:
 
 ```sh
 contextleleo query "relay bug"                # search local session history
+contextleleo context "relay bug"              # retrieve the relevant history, sized to a budget
 contextleleo view <session-id>                # read a conversation in the terminal
 contextleleo crop <session-id>                # edit or trim history into a new copy
 contextleleo export <session-id> --out run.json
 ```
+
+`contextleleo context "task"` searches every stored session, ranks the matching messages
+deterministically (keywords, file paths, symbols, errors, tool names, recency), and prints the
+smallest useful set — each chunk naming its `session#message` source. Add `--budget` to run the
+assembled context through Jev, which keeps, compresses, or drops each chunk to fit. Retrieval is
+read-only: no stored session is modified, and every kept chunk stays traceable to its original.
+The same lookup can lead a handoff — `contextleleo continue <session-id> --with codex --jev
+--retrieve "task"` prepends the retrieved context before Jev optimizes the whole to `--budget`.
 
 Move `run.json` to another machine and continue it with `contextleleo continue ./run.json --with claude_code`. Bring the project files separately.
 

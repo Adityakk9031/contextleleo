@@ -79,6 +79,31 @@ In the picker, type to filter, arrows / ctrl-p/n to move, Enter to continue the 
 
 Without a cache, every run re-reads every session. Pass `--cache <path>` (or set `CONTEXTLELEO_CACHE`) to keep a persistent search cache at that path, so `query` and the MCP search tool re-read only the sessions that changed since the last run. The flag is accepted by every subcommand.
 
+### Context retrieval
+
+```sh
+contextleleo context '<query>'                # rank matching history, then print it
+    [--budget <tokens>]                   #   optimize the assembled context to fit
+    [--max-chunks <n>]                    #   cap chunks retrieved (default 12)
+    [--max-tokens <tokens>]               #   hard cap on retrieved tokens
+    [--from <harness>]                    #   retrieve from one harness only
+    [--cwd <dir>]                         #   only sessions recorded under <dir>
+    [--quiet]                             #   print only the optimized context
+    [--cache <path>]                      #   reuse the persistent search cache
+```
+
+`context` searches every stored session, ranks the matching messages deterministically — verbatim keyword overlap, file paths, symbol overlap, error lines, tool names, and a small recency tiebreaker — and prints the smallest useful set. Each chunk names its `session#message` source, so every line stays traceable back to the untouched original, and `contextleleo view <id>#<n>` opens one. With `--budget`, the assembled context runs through Jev, which keeps, compresses, or drops each chunk to fit and reports the count of each; without it, the ranked chunks print as retrieved.
+
+Retrieval is read-only: no stored session is modified. Two library options — `--min-relevance` and `--one-chunk-per-session` — are exposed on `RetrievalOptions` but are not CLI flags.
+
+`continue` can lead a handoff with the same lookup:
+
+```sh
+contextleleo continue <id> --with codex --jev --retrieve 'relay timeout' --budget 800
+```
+
+`--retrieve` prepends the retrieved context to the handoff, then `--jev` optimizes the whole to `--budget`. It requires `--jev`, and retrieval is refused for a document-sourced (`./run.json`) session.
+
 ### MCP server
 
 ```sh

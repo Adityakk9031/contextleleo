@@ -521,7 +521,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             from,
             cwd.as_deref(),
             quiet,
-            context_cache.as_deref().or(cache.as_deref()),
+            context_cache.as_deref().or(cache),
         ),
     }
 }
@@ -1866,7 +1866,7 @@ fn prepend_retrieved(
     // Prepend the assembled messages (the query ask plus one per chunk),
     // before the session's own history.
     let mut merged = assembled.body;
-    merged.extend(common.body.drain(..));
+    merged.append(&mut common.body);
     common.body = merged;
     Ok(count)
 }
@@ -1884,7 +1884,7 @@ fn cmd_context(
     cache: Option<&Path>,
 ) -> Result<ExitCode, String> {
     use contextleleo::retrieval::{IndexRetriever, RetrievalOptions};
-    let (index, _sessions) = query::build_index(from, cwd, None, None, None, None, cache)?;
+    let (index, sessions) = query::build_index(from, cwd, None, None, None, None, cache)?;
     let options = RetrievalOptions {
         max_chunks,
         max_tokens,
@@ -1904,7 +1904,7 @@ fn cmd_context(
             style::dim("context:", style::enabled_err()),
             handoff.chunks.len(),
             if handoff.chunks.len() == 1 { "" } else { "s" },
-            _sessions.len(),
+            sessions.len(),
             handoff.assembled_tokens,
             handoff.optimized_tokens,
             handoff.retrieval_latency,
@@ -2248,6 +2248,9 @@ fn continue_amp_server_thread(
 /// A `span_req` restricts the continue to that message range (always as a
 /// rewritten copy — the original can't resume a subset of itself in place).
 /// `--jev` also always rewrites, and so implies a copy even same-harness.
+// `retrieve` and `metadata` pushed this dispatcher past clippy's argument
+// threshold; grouping them into a struct is not worth the churn here.
+#[allow(clippy::too_many_arguments)]
 fn continue_session(
     found: &local::Session,
     with: Option<HarnessId>,
