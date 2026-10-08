@@ -24,6 +24,8 @@ pub mod common;
 pub mod error;
 pub mod harness;
 pub mod jev;
+#[cfg(all(feature = "jev_api", not(target_arch = "wasm32")))]
+pub mod jev_api;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local;
 #[cfg(all(feature = "search", not(target_arch = "wasm32")))]

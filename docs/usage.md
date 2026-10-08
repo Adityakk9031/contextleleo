@@ -84,7 +84,7 @@ Without a cache, every run re-reads every session. Pass `--cache <path>` (or set
 ```sh
 contextleleo context '<query>'                # rank matching history, then print it
     [--budget <tokens>]                   #   optimize the assembled context to fit
-    [--max-chunks <n>]                    #   cap chunks retrieved (default 12)
+    [--max-chunks <n>]                    #   cap chunks in the selected set (default 12)
     [--max-tokens <tokens>]               #   hard cap on retrieved tokens
     [--from <harness>]                    #   retrieve from one harness only
     [--cwd <dir>]                         #   only sessions recorded under <dir>
@@ -92,7 +92,17 @@ contextleleo context '<query>'                # rank matching history, then prin
     [--cache <path>]                      #   reuse the persistent search cache
 ```
 
-`context` searches every stored session, ranks the matching messages deterministically — verbatim keyword overlap, file paths, symbol overlap, error lines, tool names, and a small recency tiebreaker — and prints the smallest useful set. Each chunk names its `session#message` source, so every line stays traceable back to the untouched original, and `contextleleo view <id>#<n>` opens one. With `--budget`, the assembled context runs through Jev, which keeps, compresses, or drops each chunk to fit and reports the count of each; without it, the ranked chunks print as retrieved.
+Ranking itself runs through the external **Jev API** — TypeSafe AI's System One decision model — while local search only gathers candidates:
+
+```sh
+export JEV_API_KEY=...   # your TypeSafe (Jev) API key; TYPESAFE_API_KEY also works
+```
+
+Two overrides exist and carry these defaults: `JEV_API_URL` (`https://api.typesafe.ai/v1/systemone`) and `JEV_MODEL` (`jev-latest`).
+
+Local search generates up to 64 candidate chunks (`--max-chunks` may widen that); each travels to Jev as its `session#message` locator plus a bounded excerpt — never the full history. The call sends one `noul` (yes/no) question per candidate against a shared state (the task plus every excerpt); Jev returns a calibrated probability per candidate, and those at or above 0.5 are kept — below that they are ignored. Only kept chunks are printed or optimized, and `--max-chunks` / `--max-tokens` cap that selected set. Without a key, `context` and `--retrieve` fail with an error naming exactly what to export; `list`, `view`, `query`, `export`, and plain `continue` are unaffected.
+
+`context` searches every stored session for candidate chunks — verbatim keyword overlap, file paths, symbol overlap, error lines, tool names, and a small recency tiebreaker — then asks the Jev API which of them matter for this query, and prints the selected set. Each chunk names its `session#message` source, so every line stays traceable back to the untouched original, and `contextleleo view <id>#<n>` opens one. With `--budget`, the assembled context runs through Jev's optimizer, which keeps, compresses, or drops each chunk to fit and reports the count of each; without it, the selected chunks print as returned.
 
 Retrieval is read-only: no stored session is modified. Two library options — `--min-relevance` and `--one-chunk-per-session` — are exposed on `RetrievalOptions` but are not CLI flags.
 
@@ -103,6 +113,8 @@ contextleleo continue <id> --with codex --jev --retrieve 'relay timeout' --budge
 ```
 
 `--retrieve` prepends the retrieved context to the handoff, then `--jev` optimizes the whole to `--budget`. It requires `--jev`, and retrieval is refused for a document-sourced (`./run.json`) session.
+
+`./demo/run.sh` runs the whole pipeline end to end — an Antigravity CLI session retrieved from, ranked by Jev, compressed, and written into Freebuff — and `demo/` ships the captured transcript and a video script. It is hermetic (both harness roots are redirected under `demo/.state`), which is also what `CONTEXTLELEO_ANTIGRAVITY_ROOT` exists for.
 
 ### MCP server
 

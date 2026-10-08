@@ -1,5 +1,7 @@
-//! Antigravity CLI (`agy`) conversations:
-//! `~/.gemini/antigravity-cli/conversations/<id>.db`.
+//! Antigravity conversations: `~/.gemini/<install>/conversations/<id>.db`,
+//! where `<install>` is the standalone CLI (`antigravity-cli`), the desktop
+//! app (`antigravity`), or the older IDE build (`antigravity-ide`) — whichever
+//! is installed (see [`AntigravityStore::default_root`]).
 //!
 //! Antigravity persists a conversation as a small `SQLite` database of
 //! protobuf-encoded trajectory steps (`gemini_coder.Step` — a step-type tag,
@@ -33,7 +35,7 @@
 //!   cannot be mapped back to Antigravity's enum and are omitted on write.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -48,8 +50,6 @@ use crate::transcript::{Codec, Common, Discovered, Harness, Saved, Store, TextCo
 use rusqlite::{Connection, OpenFlags, params};
 #[cfg(feature = "opencode")]
 use std::fs;
-#[cfg(feature = "opencode")]
-use std::path::Path;
 
 /// The Antigravity harness marker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1742,8 +1742,38 @@ fn truncate_title(text: &str) -> String {
 
 // -- store -----------------------------------------------------------------
 
-/// Reads and writes Antigravity conversations under a CLI data root
-/// (default `~/.gemini/antigravity-cli`).
+/// Sibling roots under `~/.gemini` that an installed Antigravity may use, in
+/// preference order: the standalone CLI, the desktop app, then the older IDE
+/// build. All three keep the same `conversations/<id>.db` layout, so whichever
+/// exists is a usable store.
+const CANDIDATE_ROOTS: [&str; 3] = ["antigravity-cli", "antigravity", "antigravity-ide"];
+
+/// The desktop app's conversation list, kept beside `conversations/` in the
+/// roots the app owns. Its presence is how a root is told apart from a bare
+/// CLI store.
+const APP_INDEX_FILE: &str = "conversation_summaries.db";
+
+/// Whether `root` is a *desktop app* store, i.e. the app — not the CLI — is
+/// what lists its sessions.
+///
+/// The app keeps its sidebar list in `conversation_summaries.db` and rebuilds
+/// it from `conversations/*.db` only when it starts (its language server logs
+/// `reconcileSummaries`/`trigger=startup`; there is no directory watcher), so
+/// a session written while the app is open is missing from its list until the
+/// app is reopened. Measured against the app's own language server: a
+/// database written into a desktop-app root is picked up on the next launch
+/// and indexed with title, step count and workspace, so nothing else needs to
+/// be written by hand — but nothing shows up before that launch either.
+///
+/// A bare `antigravity-cli` root has no such file: `agy` lists sessions by
+/// scanning, so a write is visible immediately.
+#[must_use]
+pub fn app_owns_session_list(root: &Path) -> bool {
+    root.join(APP_INDEX_FILE).is_file()
+}
+
+/// Reads and writes Antigravity conversations under a data root (default:
+/// whichever of [`CANDIDATE_ROOTS`] exists under `~/.gemini`).
 #[derive(Debug, Clone)]
 pub struct AntigravityStore {
     pub root: PathBuf,
@@ -1754,10 +1784,34 @@ impl AntigravityStore {
         Self { root: root.into() }
     }
 
-    /// The default data root, `~/.gemini/antigravity-cli`.
+    /// The default data root.
+    ///
+    /// Antigravity ships in several shapes whose stores are siblings under
+    /// `~/.gemini` — the CLI (`antigravity-cli`), the desktop app
+    /// (`antigravity`, which also holds `brain/` and `bin/`), and the older IDE
+    /// (`antigravity-ide`). The first that exists is the live store, so
+    /// `list --from antigravity` reads a real install with no configuration;
+    /// when none exists the CLI's root is assumed, so writes land where `agy`
+    /// would look for them.
+    ///
+    /// `CONTEXTLELEO_ANTIGRAVITY_ROOT` overrides all of it (the convention the
+    /// other harnesses follow), which is what a hermetic demo or test run points
+    /// at a throwaway directory instead of the real store.
     #[must_use]
     pub fn default_root() -> Option<Self> {
-        super::home_dir().map(|home| Self::new(home.join(".gemini").join("antigravity-cli")))
+        if let Some(dir) =
+            std::env::var_os("CONTEXTLELEO_ANTIGRAVITY_ROOT").filter(|v| !v.is_empty())
+        {
+            return Some(Self::new(PathBuf::from(dir)));
+        }
+        let gemini = super::home_dir()?.join(".gemini");
+        let installed = CANDIDATE_ROOTS
+            .iter()
+            .map(|name| gemini.join(name))
+            .find(|root| root.is_dir());
+        Some(Self::new(
+            installed.unwrap_or_else(|| gemini.join(CANDIDATE_ROOTS[0])),
+        ))
     }
 
     #[cfg(feature = "opencode")]
@@ -1833,6 +1887,17 @@ impl Store for AntigravityStore {
         }
         if let Some(text) = transcript.body.transcript_full.as_deref() {
             fs::write(logs_dir.join("transcript_full.jsonl"), text)?;
+        }
+
+        // A desktop-app root lists sessions from its own index, which it only
+        // rebuilds at launch; say so here, where the id is known, instead of
+        // letting the app look like it lost the session. stderr: the caller's
+        // stdout is parsed (ids, locators).
+        if app_owns_session_list(&self.root) {
+            eprintln!(
+                "note: Antigravity indexes new sessions when it launches; \
+                 reopen the app to see {id} in its list"
+            );
         }
 
         Ok(Saved {

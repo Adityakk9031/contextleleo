@@ -28,6 +28,11 @@ pub enum Error {
         detail: String,
     },
 
+    /// A Jev-powered feature was requested but the external Jev API is not
+    /// configured (`JEV_API_KEY` / `JEV_API_URL` unset or empty).
+    #[error("jev api is not configured: {0}")]
+    JevNotConfigured(String),
+
     /// Underlying I/O failure (reading a session file, writing a rollout).
     #[error(transparent)]
     Io(#[from] std::io::Error),

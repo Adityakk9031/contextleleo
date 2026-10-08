@@ -10,16 +10,20 @@
 //! budget (keep / compress / drop).
 //!
 //! ```text
-//! query → candidate hits → scored chunks → budgeted selection
+//! query → candidate hits → scored chunks → [Jev API decides relevance]
 //!       → assembled Transcript<Common> → jev::plan / allocate / apply
 //!       → optimized context (every block traceable to session#message)
 //! ```
 //!
-//! Ranking is deterministic and local: keyword overlap (the search index's
-//! own scores), file-path, code-symbol, error-token, and tool-name overlap
-//! with the query, plus recency. No embeddings, no network — a future
-//! semantic retriever implements [`ContextRetriever`] and drops in without
-//! touching callers or the optimizer.
+//! Candidate generation is deterministic and local: keyword overlap (the
+//! search index's own scores), file-path, code-symbol, error-token, and
+//! tool-name overlap with the query, plus recency — no embeddings, no
+//! network. With feature `jev_api`, `JevRankedRetriever` then asks the
+//! external Jev API the question local scoring cannot answer — *given this
+//! query, which of these candidates actually matter?* — and only the
+//! selected chunks flow into the same optimizer, unchanged. A future
+//! semantic retriever implements [`ContextRetriever`] and drops in the
+//! same way.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -29,6 +33,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::{Block, Message, Meta, Role};
 use crate::jev;
+#[cfg(feature = "jev_api")]
+use crate::jev_api::{JevCandidate, JevClient, JevDecision, JevDecisionKind, excerpt};
 use crate::search::{DocKey, Index, Origin, Query};
 use crate::{Common, Transcript};
 
@@ -765,4 +771,354 @@ pub fn retrieve_and_optimize_default<R: ContextRetriever>(
         budget,
         &jev::DeterministicScorer::default(),
     )
+}
+
+// ── external Jev ranking (feature `jev_api`) ──────────────────────────
+
+/// How many candidate chunks one Jev ranking pass judges when the caller's
+/// own `max_chunks` is smaller: wide enough for the judgment to matter,
+/// bounded so each request stays cheap and sends as little history off-box
+/// as possible (§8 of the retrieval design: local search may be broad, the
+/// payload must not be).
+#[cfg(feature = "jev_api")]
+pub const JEV_CANDIDATE_CHUNKS: usize = 64;
+
+/// A [`ContextRetriever`] that delegates the relevance decision to the
+/// external Jev API.
+///
+/// The wrapped retriever still generates candidates — cheap, local, and
+/// read-only — but widened to [`JEV_CANDIDATE_CHUNKS`]; this wrapper sends
+/// each candidate's `session#message` locator plus an excerpt to Jev and
+/// returns only what Jev marked `retrieve`, ordered by Jev's relevance and
+/// capped to the caller's `options`. The existing optimizer downstream
+/// never learns the difference: Jev's relevance simply becomes each
+/// selected chunk's, so the budget ladder still sheds the weakest first.
+/// Every original stays untouched in storage.
+#[cfg(feature = "jev_api")]
+pub struct JevRankedRetriever<'a, R: ContextRetriever> {
+    inner: &'a R,
+    client: &'a JevClient,
+}
+
+#[cfg(feature = "jev_api")]
+impl<'a, R: ContextRetriever> JevRankedRetriever<'a, R> {
+    /// Rank `inner`'s local candidates through `client`.
+    #[must_use]
+    pub fn new(inner: &'a R, client: &'a JevClient) -> Self {
+        Self { inner, client }
+    }
+}
+
+#[cfg(feature = "jev_api")]
+impl<R: ContextRetriever> ContextRetriever for JevRankedRetriever<'_, R> {
+    fn retrieve(
+        &self,
+        query: &str,
+        options: &RetrievalOptions,
+    ) -> crate::Result<Vec<RetrievedContext>> {
+        let candidates = self.inner.retrieve(query, &candidate_options(options))?;
+        jev_filter(self.client, query, candidates, options)
+    }
+}
+
+/// Widen the caller's `options` into the candidate-generation pass: at
+/// least [`JEV_CANDIDATE_CHUNKS`] chunks, and no local token pre-gate —
+/// Jev is the selection gate now, and `options` still caps the final set.
+#[cfg(feature = "jev_api")]
+fn candidate_options(options: &RetrievalOptions) -> RetrievalOptions {
+    RetrievalOptions {
+        max_chunks: JEV_CANDIDATE_CHUNKS.max(options.max_chunks),
+        max_tokens: None,
+        ..options.clone()
+    }
+}
+
+/// Stage A of the pipeline: ask the external Jev API which of the locally
+/// retrieved `candidates` matter for `query`.
+///
+/// Each candidate travels as its `session#message` locator and an
+/// [`excerpt`] of its text — never the whole history. Jev answers with a
+/// decision and a relevance per id: `ignore` chunks are left out of the
+/// assembled context (their originals remain complete and retrievable),
+/// `retrieve` chunks adopt Jev's relevance as their own, and the result is
+/// ordered and capped to `options` exactly like a local pass.
+///
+/// # Errors
+///
+/// [`crate::Error::Remote`] when the call fails, or when Jev's answers do
+/// not cover the candidates one-for-one — an omitted, duplicated, or
+/// unknown id means the response cannot be trusted against local history.
+#[cfg(feature = "jev_api")]
+pub fn jev_filter(
+    client: &JevClient,
+    query: &str,
+    candidates: Vec<RetrievedContext>,
+    options: &RetrievalOptions,
+) -> crate::Result<Vec<RetrievedContext>> {
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    let payload: Vec<JevCandidate> = candidates
+        .iter()
+        .map(|chunk| JevCandidate {
+            id: chunk.source.locator(),
+            content: excerpt(&chunk.content),
+        })
+        .collect();
+    let decisions = client.rank(query, &payload)?;
+    reconcile(candidates, decisions, options)
+}
+
+/// Apply Jev's decisions to the candidate chunks: exactly one answer per
+/// candidate, `ignore` drops the chunk, `retrieve` adopts the returned
+/// relevance (clamped to `0..=1`), and the survivors are ranked by Jev
+/// before [`select_within_budget`] applies the caller's caps. The error
+/// contract lives on [`jev_filter`].
+#[cfg(feature = "jev_api")]
+fn reconcile(
+    candidates: Vec<RetrievedContext>,
+    decisions: Vec<JevDecision>,
+    options: &RetrievalOptions,
+) -> crate::Result<Vec<RetrievedContext>> {
+    let mut answered: HashMap<String, JevDecision> = HashMap::with_capacity(decisions.len());
+    for decision in decisions {
+        let id = decision.id.clone();
+        if answered.insert(id.clone(), decision).is_some() {
+            return Err(crate::Error::Remote {
+                harness: "jev",
+                detail: format!("Jev answered candidate {id} twice"),
+            });
+        }
+    }
+    let mut selected = Vec::with_capacity(candidates.len());
+    for mut chunk in candidates {
+        let id = chunk.source.locator();
+        let Some(decision) = answered.remove(&id) else {
+            return Err(crate::Error::Remote {
+                harness: "jev",
+                detail: format!("Jev did not rank candidate {id}"),
+            });
+        };
+        if decision.decision == JevDecisionKind::Retrieve {
+            chunk.relevance = decision.relevance.clamp(0.0, 1.0);
+            selected.push(chunk);
+        }
+    }
+    if let Some(id) = answered.keys().next() {
+        return Err(crate::Error::Remote {
+            harness: "jev",
+            detail: format!("Jev ranked unknown candidate {id}"),
+        });
+    }
+    selected.sort_by(|a, b| {
+        b.relevance
+            .partial_cmp(&a.relevance)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.source.session.id.cmp(&b.source.session.id))
+            .then_with(|| {
+                a.source
+                    .message_index
+                    .unwrap_or(0)
+                    .cmp(&b.source.message_index.unwrap_or(0))
+            })
+    });
+    Ok(select_within_budget(
+        selected,
+        options.max_chunks,
+        options.max_tokens,
+    ))
+}
+
+#[cfg(all(test, feature = "jev_api"))]
+#[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+mod jev_rank_tests {
+    use super::*;
+
+    /// One candidate chunk, identifiable through its own locator.
+    fn candidate(session: &str, relevance: f32) -> RetrievedContext {
+        RetrievedContext {
+            source: SourceReference {
+                session: DocKey {
+                    harness: crate::HarnessId::Simple,
+                    id: session.to_string(),
+                    source: None,
+                },
+                message_index: Some(1),
+            },
+            content: format!("content of {session}"),
+            relevance,
+            signals: Vec::new(),
+            session_time: Utc::now(),
+        }
+    }
+
+    fn decision(chunk: &RetrievedContext, relevance: f32, kind: JevDecisionKind) -> JevDecision {
+        JevDecision {
+            id: chunk.source.locator(),
+            relevance,
+            decision: kind,
+        }
+    }
+
+    #[test]
+    fn candidate_options_widen_the_pass_and_drop_the_pre_gate() {
+        let options = RetrievalOptions {
+            max_chunks: 5,
+            max_tokens: Some(100),
+            ..RetrievalOptions::default()
+        };
+        let widened = candidate_options(&options);
+        assert_eq!(widened.max_chunks, JEV_CANDIDATE_CHUNKS);
+        assert!(widened.max_tokens.is_none());
+        assert_eq!(widened.min_relevance, options.min_relevance);
+        assert_eq!(widened.cwd, options.cwd);
+
+        let wide = RetrievalOptions {
+            max_chunks: JEV_CANDIDATE_CHUNKS + 100,
+            ..RetrievalOptions::default()
+        };
+        assert_eq!(
+            candidate_options(&wide).max_chunks,
+            JEV_CANDIDATE_CHUNKS + 100
+        );
+    }
+
+    #[test]
+    fn jev_decisions_replace_local_relevance_and_order() {
+        let strong = candidate("strong-local", 0.95);
+        let mid = candidate("mid-local", 0.50);
+        let weak = candidate("weak-local", 0.20);
+        let decisions = vec![
+            decision(&strong, 0.0, JevDecisionKind::Ignore),
+            decision(&mid, 0.42, JevDecisionKind::Retrieve),
+            decision(&weak, 0.91, JevDecisionKind::Retrieve),
+        ];
+        let selected = reconcile(
+            vec![strong, mid, weak],
+            decisions,
+            &RetrievalOptions::default(),
+        )
+        .expect("reconcile");
+        assert_eq!(selected.len(), 2);
+        // Jev's relevance, not the local one, now orders and weights them.
+        assert_eq!(selected[0].content, "content of weak-local");
+        assert_eq!(selected[0].relevance, 0.91);
+        assert_eq!(selected[1].content, "content of mid-local");
+        assert_eq!(selected[1].relevance, 0.42);
+    }
+
+    #[test]
+    fn the_caller_options_still_cap_the_selection() {
+        let one = candidate("one", 0.9);
+        let two = candidate("two", 0.8);
+        let three = candidate("three", 0.7);
+        let decisions = vec![
+            decision(&one, 0.9, JevDecisionKind::Retrieve),
+            decision(&two, 0.8, JevDecisionKind::Retrieve),
+            decision(&three, 0.7, JevDecisionKind::Retrieve),
+        ];
+        let capped = RetrievalOptions {
+            max_chunks: 1,
+            ..RetrievalOptions::default()
+        };
+        let selected = reconcile(vec![one, two, three], decisions, &capped).expect("reconcile");
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].content, "content of one");
+
+        // "content of first" is 16 chars = 4 estimated tokens; a cap of 4
+        // admits the first chunk and leaves no room for the second.
+        let token_capped = RetrievalOptions {
+            max_tokens: Some(4),
+            ..RetrievalOptions::default()
+        };
+        let first = candidate("first", 0.6);
+        let second = candidate("second", 0.5);
+        assert_eq!(first.tokens(), 4);
+        let decisions = vec![
+            decision(&first, 0.6, JevDecisionKind::Retrieve),
+            decision(&second, 0.5, JevDecisionKind::Retrieve),
+        ];
+        let selected = reconcile(vec![first, second], decisions, &token_capped).expect("reconcile");
+        assert_eq!(selected.len(), 1);
+    }
+
+    #[test]
+    fn untrusted_answer_sets_are_rejected() {
+        let a = candidate("a", 0.9);
+        let b = candidate("b", 0.8);
+
+        let missing = reconcile(
+            vec![a.clone(), b.clone()],
+            vec![decision(&a, 0.9, JevDecisionKind::Retrieve)],
+            &RetrievalOptions::default(),
+        )
+        .expect_err("b was never ranked");
+        match missing {
+            crate::Error::Remote { detail, .. } => {
+                assert!(detail.contains("did not rank"), "{detail}");
+                assert!(detail.contains(&b.source.locator()), "{detail}");
+            }
+            other => panic!("expected Remote, got {other:?}"),
+        }
+
+        let duplicate = reconcile(
+            vec![a.clone()],
+            vec![
+                decision(&a, 0.9, JevDecisionKind::Retrieve),
+                decision(&a, 0.1, JevDecisionKind::Ignore),
+            ],
+            &RetrievalOptions::default(),
+        )
+        .expect_err("answered twice");
+        match duplicate {
+            crate::Error::Remote { detail, .. } => assert!(detail.contains("twice"), "{detail}"),
+            other => panic!("expected Remote, got {other:?}"),
+        }
+
+        let unknown = reconcile(
+            vec![a.clone()],
+            vec![
+                decision(&b, 0.5, JevDecisionKind::Retrieve),
+                JevDecision {
+                    id: "ghost#9".to_string(),
+                    relevance: 0.5,
+                    decision: JevDecisionKind::Retrieve,
+                },
+            ],
+            &RetrievalOptions::default(),
+        )
+        .expect_err("a was never ranked and a ghost appeared");
+        match unknown {
+            crate::Error::Remote { detail, .. } => {
+                assert!(detail.contains("did not rank"), "{detail}");
+            }
+            other => panic!("expected Remote, got {other:?}"),
+        }
+
+        let ghost_only = reconcile(
+            vec![a.clone()],
+            vec![JevDecision {
+                id: "ghost#9".to_string(),
+                relevance: 0.5,
+                decision: JevDecisionKind::Retrieve,
+            }],
+            &RetrievalOptions::default(),
+        )
+        .expect_err("a missing, ghost unknown");
+        // The first unanswerable candidate fails first: local history wins.
+        match ghost_only {
+            crate::Error::Remote { detail, .. } => {
+                assert!(detail.contains("did not rank"), "{detail}");
+            }
+            other => panic!("expected Remote, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn no_candidates_means_no_network_call() {
+        let client = JevClient::new("key", "");
+        let selected = jev_filter(&client, "query", Vec::new(), &RetrievalOptions::default())
+            .expect("short-circuit");
+        assert!(selected.is_empty());
+    }
 }

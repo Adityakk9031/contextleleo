@@ -4,3 +4,6 @@
 # Local personal stores / agent state — never push.
 .freebuff/
 .claude/
+
+# Demo scratch state (sample session + redirected stores).
+demo/.state/

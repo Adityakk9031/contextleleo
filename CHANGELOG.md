@@ -21,6 +21,19 @@ Each release is published to [crates.io](https://crates.io/crates/contextleleo),
   `--budget`. Read-only — no stored session is modified.
 - Add `continue --retrieve <query>`: prepend the retrieved context to a handoff, then let `--jev`
   optimize the whole to the budget.
+- Add Jev API ranking to retrieval (`context` and `continue --retrieve`): local search gathers a
+  broad candidate set, then TypeSafe AI's Jev (System One) decides which chunks matter — one
+  `noul` question per candidate against the task, keeping those at or above 0.5 probability — and
+  only its selections, with its probabilities as relevance, flow into the existing optimizer
+  unchanged. Configured by the key alone (`JEV_API_KEY`, or `TYPESAFE_API_KEY`) with
+  `JEV_API_URL`/`JEV_MODEL` overriding TypeSafe's endpoint and `jev-latest`. Without a key those
+  commands stop with a clear configuration error naming what to export; every other command runs
+  keyless. Ships behind the `jev_api` feature (on by default); only bounded candidate excerpts
+  leave the machine.
+- Add the cross-harness demo (`demo/`): a real Antigravity CLI session is retrieved from,
+  ranked by Jev, compressed to a token budget, and written into Freebuff's own store as a new
+  thread — one command, with shot-by-shot video script and a captured transcript. Hermetic by
+  default; `CONTEXTLELEO_ANTIGRAVITY_ROOT` redirects the Antigravity store for it (and for tests).
 - Add the Freebuff harness (read and continue; `continue` opens the app).
 - Add read-side session lineage (`Meta::lineage`): fork/continue/spawn relationships read from
   Codex's `session_meta` (subagent spawns, guardian review, `/fork`), pi/Campfire's

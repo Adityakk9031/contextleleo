@@ -116,7 +116,7 @@ required-features = ["search"]
 [features]
 # Explicit cloud Cowork reads reuse the Claude Desktop transport.
 cowork_remote = ["claude_chat"]
-default = ["opencode", "hermes", "claude_chat", "cowork_remote", "chatgpt", "search"]
+default = ["opencode", "hermes", "claude_chat", "cowork_remote", "chatgpt", "search", "jev_api"]
 # The OpenCode harness store reads OpenCode's SQLite database. The OpenCode
 # codec itself is always available; only the on-disk store needs rusqlite.
 opencode = ["dep:rusqlite"]
@@ -151,6 +151,11 @@ chatgpt = [
 # is pure Rust (helix's matcher) and compiles to wasm32; combine with `wasm`
 # to expose the bindings.
 search = ["dep:nucleo-matcher", "dep:memchr"]
+# The external Jev ranking API (`contextleleo::jev_api`): the relevance
+# decision over locally retrieved candidates, configured by `JEV_API_KEY`
+# and `JEV_API_URL`. Ships in default builds; --no-default-features and the
+# wasm build compile without it.
+jev_api = ["dep:futures-util", "dep:tokio", "dep:wreq"]
 # WASM bindings (wasm32-unknown-unknown). uuid/js gives getrandom a JS backend
 # for the rare empty-id fallback; build with --no-default-features so rusqlite
 # (native SQLite) is excluded.

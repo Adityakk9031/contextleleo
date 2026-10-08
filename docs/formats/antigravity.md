@@ -1,11 +1,13 @@
 # Antigravity
 
-Antigravity is Google's agent harness; contextleleo reads the conversation store of
-its terminal surface, the **Antigravity CLI** (`agy`) — not the Antigravity
-IDE. The CLI is closed source: the GitHub repository is a changelog and issue
-tracker with no implementation, and Google's docs describe conversation
-*management*, never the storage format. Everything below is
-**reverse-engineered** — the SQLite schema from observed session databases,
+Antigravity is Google's agent harness; contextleleo reads its conversation store
+— the **Antigravity CLI** (`agy`) by preference, and the desktop app or the
+older IDE build when that is what is installed, since all three keep the same
+`~/.gemini/<install>/conversations/<id>.db` layout. Antigravity is closed
+source: the GitHub repository is a changelog and issue tracker with no
+implementation, and Google's docs describe conversation *management*, never the
+storage format. Everything below is **reverse-engineered** — the SQLite schema
+from observed session databases,
 and the protobuf field numbers from the message descriptors embedded in the
 `agy` binary itself. Observations are from `agy` 1.0.16.
 
@@ -14,7 +16,7 @@ Each conversation is one small SQLite database of protobuf-encoded
 logs mirror the conversation as JSONL for display:
 
 ```
-~/.gemini/antigravity-cli/
+~/.gemini/<install>/              # antigravity-cli | antigravity | antigravity-ide
 ├── conversations/
 │   └── <uuid>.db                 # SQLite: the resume carrier
 │       ├── trajectory_meta       # 1 row: trajectory_id, cascade_id (= session id)
@@ -34,9 +36,14 @@ logs mirror the conversation as JSONL for display:
 
 ## On disk
 
-The data root is `~/.gemini/antigravity-cli` (resolved via `HOME`, or
-`USERPROFILE` on Windows; there is no dedicated environment override — an
-alternate root is passed programmatically via `AntigravityStore::new`).
+The data root is whichever of `~/.gemini/antigravity-cli` (the standalone CLI),
+`~/.gemini/antigravity` (the desktop app) or `~/.gemini/antigravity-ide` (the
+older IDE build) exists — first match wins, and the CLI's root is assumed when
+none does, so writes land where `agy` would look for them. `HOME` (or
+`USERPROFILE` on Windows) locates them; `CONTEXTLELEO_ANTIGRAVITY_ROOT`
+overrides the choice outright, which is how a demo or test run redirects the
+store at a throwaway directory instead of the real history. An alternate root
+is also passed programmatically via `AntigravityStore::new`.
 Conversations live at `conversations/<uuid>.db`, plain SQLite with
 `PRAGMA user_version = 1` and the usual `-wal`/`-shm` sidecars while the CLI
 is live. Discovery lists `*.db` files in that directory and opens each
@@ -45,6 +52,44 @@ files, foreign SQLite) are silently skipped. The database is the resume
 carrier — `agy --conversation=<id>` rebuilds context from the steps alone —
 but a missing `brain/<id>/` directory wedges the CLI on resume, so contextleleo's
 `save` always writes both.
+
+## The desktop app's conversation list
+
+The desktop app does not list `conversations/` directly: beside them it keeps
+its own sidebar index, `conversation_summaries.db` — SQLite, one
+`conversation_summaries` row per session (`title`, `preview`, `step_count`,
+`last_modified_time`, `workspace_uris`, `project_id`, and a `raw_summary` blob
+holding a marshaled `CascadeTrajectorySummary`). Its language server **rebuilds
+that index from `conversations/*.db` when it starts** and never watches the
+directory:
+
+```
+I1008 … store_client.go:697] summary store: starting background reconciliation (trigger=startup)
+I1008 … reconcile_summaries.go:94] [Summaries] reconcile checked 15 conversations,
+                                     restored 1, cached 14, skipped 0, dropped 0
+```
+
+Measured by running the app's own language server
+(`Antigravity.app/Contents/Resources/bin/language_server --headless
+--app_data_dir antigravity`, `HOME` redirected at a copy of a real store, v1.0.0)
+against a session contextleleo had just written:
+
+- the new database is **found and indexed on the next start** (`restored 1`),
+  with `preview`, `step_count`, `workspace_uris` and `raw_summary` all derived
+  from the database itself — nothing has to be written into the index by hand,
+  and nothing should be: the app re-derives rows it considers incomplete, and
+  keeps the ones it does not;
+- a database written while the server is already running is **not** picked up.
+  There is no directory watcher and reconciliation runs once per process
+  (`trigger=startup`), so a session written into a store the app has open shows
+  up in its list only after the app is relaunched. `save` warns about that, on
+  stderr so stdout stays parseable, when the root is an app store — which is
+  how [`app_owns_session_list`] tells the shapes apart. The CLI's root
+  (`antigravity-cli`) has no such index: `agy` lists by scanning, so its writes
+  are visible at once;
+- deleting a database does **not** prune its index row (`dropped 0`), so an
+  app-side undo has to delete the row too: `sqlite3 conversation_summaries.db
+  "delete from conversation_summaries where conversation_id='<id>';"`.
 
 ## Dissection of a transcript
 

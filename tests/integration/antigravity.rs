@@ -318,6 +318,25 @@ fn delete_removes_db_and_brain_dir() {
     assert!(store.discover().unwrap().is_empty());
 }
 
+/// The desktop app is told apart from a bare CLI store by the conversation
+/// index it keeps beside `conversations/`: only an app root has one, and only
+/// there does `save` warn that the app indexes at launch (it has no watcher,
+/// so running it will not show the session until it is reopened).
+#[test]
+fn app_owns_session_list_follows_the_app_index_file() {
+    let bare = tempfile::tempdir().unwrap();
+    assert!(!antigravity::app_owns_session_list(bare.path()));
+
+    let app = tempfile::tempdir().unwrap();
+    std::fs::write(app.path().join("conversation_summaries.db"), b"").unwrap();
+    assert!(antigravity::app_owns_session_list(app.path()));
+
+    // The same name as a directory is not the index.
+    let dir_named = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir_named.path().join("conversation_summaries.db")).unwrap();
+    assert!(!antigravity::app_owns_session_list(dir_named.path()));
+}
+
 // -- to_common ---------------------------------------------------------------
 
 #[test]

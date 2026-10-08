@@ -195,9 +195,9 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 530 passing, 0 failing (this is the verified state)
+## 9. Tests — 548 passing, 0 failing (this is the verified state)
 
-**Command:** `cargo test --workspace --all-features` → exit 0. Tallies of the 8 result lines: **530 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
+**Command:** `cargo test --workspace --all-features` → exit 0. Tallies of the 8 result lines: **548 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage and §19 demo kit grew the suite, latest full run 2026-10-08). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
 `tests/integration/retrieval.rs` holds **12 `#[test]` fns** (registered in `tests/integration/main.rs` as `mod retrieval;`):
 
@@ -250,7 +250,7 @@ The test file grew from its earlier 468-line draft to 560 lines as the pipeline 
 
 | Check | Result |
 |---|---|
-| `cargo test --workspace --all-features` | exit 0 — **530 passed; 0 failed; 1 ignored** (doc-test; two compile-fail doctests pass as designed) |
+| `cargo test --workspace --all-features` | exit 0 — **548 passed; 0 failed; 1 ignored** (latest full run, 2026-10-08; was 530 here — the §18/§19 additions grew it) |
 | `cargo check --no-default-features` | exit 0 (lib + CLI compile without default features) |
 | `cargo fmt --all -- --check` | **exit 0 after `cargo fmt --all` was applied** (the run immediately preceding this doc reformatted retrieval sources; see "Formatting cleanup" below) |
 | `cargo clippy --workspace --all-features` | **exit 0 — 0 warnings, 0 errors** (cleaned earlier this pass; see below) |
@@ -302,8 +302,8 @@ Nothing above is speculative — each item is a real gap that needs real work, r
 
 ### 12.5 Freebuff adapter leftovers (§1 stream 3)
 
-- `src/harness/freebuff.rs` and `tests/integration/freebuff.rs` are done and green (all 530 tests pass), and `README.md`'s Supported-agents table row `| [Freebuff](docs/formats/freebuff.md) | freebuff | Yes | Yes (opens the app) |` is in place (README line ~122).
-- Left open from that stream: a CHANGELOG entry (§12 item 4); confirm `docs/formats/freebuff.md` exists (the README links to it; I could not verify the page is present in this checkout); and the general `--pedantic` sweep (§12 item 2).
+- `src/harness/freebuff.rs` and `tests/integration/freebuff.rs` are done and green (the full suite is 548 passed — §19), and `README.md`'s Supported-agents table row `| [Freebuff](docs/formats/freebuff.md) | freebuff | Yes | Yes (opens the app) |` is in place (README line ~122).
+- Left open from that stream: nothing — the CHANGELOG entry (§12 item 4), `docs/formats/freebuff.md` (verified present, §12 item 3) and the `--pedantic` sweep (§12 item 2) all landed; newer work is §18 (Jev) and §19 (demo kit).
 
 ## 13. Environment + runbook
 
@@ -311,7 +311,7 @@ Nothing above is speculative — each item is a real gap that needs real work, r
 - Repo root is the lib crate; `cli/` is the CLI. Common commands:
   ```sh
   source "$HOME/.cargo/env"
-  cargo test --workspace --all-features     # 530 pass, ~25–40 s machine-dependent
+  cargo test --workspace --all-features     # 548 pass, ~25–40 s machine-dependent
   cargo test --workspace --all-features retrieval::   # just the retrieval tests
   cargo run -p contextleleo-cli -- context "query" --max-chunks 3
   cargo run -p contextleleo-cli -- continue <id> --jev --retrieve "task" --no-resume
@@ -387,3 +387,215 @@ Listed as a straight-up list, each a concise trap:
 
 - This doc assumes the reader has the repo open. `README.md` carries the badge row and supported-agents matrix; `docs/usage.md` is the CLI reference; `CHANGELOG.md`'s Unreleased section is the release-checklist cross-reference for §12.
 - Numbers are machine-local (cargo timings, example output). A new contributor re-running will get different absolute latencies; the ratios and rankings are the durable claims.
+
+---
+
+## 18. Jev API ranking stage — *contextleleo searches, Jev decides*
+
+**Architecture correction (user-confirmed).** Jev is an **external API dependency**: not open
+source, not local, no GPU. Customers authenticate with a Jev API key. The brief also said what
+*tool* Jev plays: local search generates candidates, Jev decides which matter, and the
+**pre-existing optimizer stays as-is** (keep / compress / drop / budget — “do not rebuild it”).
+So the split is two stages:
+
+```text
+Stage A (new)   local candidate retrieval (broad, cheap) → JEV API → retrieve/ignore + relevance
+Stage B (kept)  selected chunks → existing plan_with → RelevanceScorer → allocate → apply
+```
+
+**Configuration:** the key alone is required — `JEV_API_KEY`, with TypeSafe's own
+`TYPESAFE_API_KEY` accepted as a fallback alias (vendor docs use that name). `JEV_API_URL`
+defaults to `https://api.typesafe.ai/v1/systemone`; `JEV_MODEL` defaults to `jev-latest`. Missing
+key → `Error::JevNotConfigured` → `error: jev api is not configured: export JEV_API_KEY (or
+TYPESAFE_API_KEY) …`. **No local fallback** (user decision: fail hard). Commands unaffected by the
+absence of a key: `list`, `view`, `query`, `export`, `crop`, `continue` without `--retrieve`, and
+`continue --jev` alone (that is Stage B, local).
+
+**Contract — the real TypeSafe AI System One API** (`docs.typesafe.ai`, verified live
+2026-10-08 = HTTP 200 on `api.typesafe.ai/v1/systemone`): one `noul` (yes/no) question per
+candidate, judged against a shared state.
+
+```json
+POST https://api.typesafe.ai/v1/systemone      (JEV_API_URL overrides)
+Authorization: Bearer $JEV_API_KEY
+{
+  "model": "jev-latest",
+  "state": "Task:\n<query>\n\nCandidate chunks (numbered; each names its source):\n\n[1] session#message\n<≤800-char excerpt>\n…",
+  "questions": {
+    "candidate_1": { "type": "noul",
+                     "instructions": "Candidate [1] (session#message) in the state contains information that helps with the task.",
+                     "criteria": { "true": "…helps with the task", "false": "…unrelated/redundant/too generic" } },
+    "candidate_2": { "type": "noul", "instructions": "…", "criteria": { … } }
+  }
+}
+→ { "model": "jev-1.13.0",
+    "answers": { "candidate_1": { "type": "noul", "noul": 0.69 },
+                 "candidate_2": { "type": "noul", "noul": 0.13 } },
+    "usage": { "input_tokens": 434, "output_tokens": 40 } }
+```
+
+Mapping: `noul` probability = the candidate's relevance, and `probability ≥ RETRIEVE_THRESHOLD`
+(`0.5`) ⇒ `retrieve`, below ⇒ `ignore` — so Jev's calibrated probability, not a heuristic, decides
+which chunks the handoff carries. Ids stay `session#message` locators and map back by question
+name (`candidate_N`), so a decision always resolves to the authoritative local original.
+Reconciliation is strict: a **missing, non-`noul`, non-finite, or unexpected answer** is
+`Error::Remote { harness: "jev" }` — a response that cannot be trusted against local history never
+silently reshapes it. Only bounded candidate excerpts leave the machine (§8 of the brief); the key
+is redacted from `Debug`, sent as a sensitive `Authorization` header, and never stored.
+
+**Files:**
+
+| Path | Change |
+|---|---|
+| `Cargo.toml` | feature `jev_api = ["dep:futures-util", "dep:tokio", "dep:wreq"]`, added to `default` |
+| `src/error.rs` | new `Error::JevNotConfigured(String)` |
+| `src/lib.rs` | `pub mod jev_api`, gated `feature = "jev_api"` + `not(wasm32)` |
+| `src/jev_api.rs` | NEW, 531 lines: `JevClient` (`from_env`/`from_lookup`/`rank`/`post`), `JevCandidate`, `JevDecision{Kind}`, `excerpt`, status guidance, redacted `Debug`; 10 unit tests incl. a loopback mock HTTP server |
+| `src/retrieval.rs` | 1124 lines: `JEV_CANDIDATE_CHUNKS = 64`, `JevRankedRetriever` (a `ContextRetriever`), `jev_filter`, `candidate_options`, `reconcile`; 5 unit tests (`jev_rank_tests`); module docs and “no network” claims updated |
+| `cli/src/lib.rs` | `cmd_context` → `JevClient::from_env()` fail-fast + `JevRankedRetriever`; `prepend_retrieved` → wide candidate pass + `jev_filter`; help text for `context`, `--retrieve`, `--max-chunks` |
+| `README.md`, `docs/usage.md`, `CHANGELOG.md` | two-stage flow, env vars, keyless-other-commands promise |
+
+**Verification (all re-run after the last edit):** `cargo test --workspace --all-features` →
+**544 passed / 0 failed / exit 0** (was 530; +10 `jev_api`, +5 `jev_rank_tests`, −1 rounding of
+existing counts); `cargo fmt --all --check` exit 0; `RUSTFLAGS="-D warnings" cargo clippy
+--workspace --all-targets --all-features` exit 0; `cargo clippy -p contextleleo --lib
+--no-default-features` exit 0; `cargo check --no-default-features` exit 0; `cargo bench -p
+contextleleo --bench retrieval --no-run` exit 0; `cargo build --release --locked -p
+contextleleo-cli` exit 0 → `contextleleo 0.14.4`.
+
+**End-to-end through the real binary** (mock Jev API on loopback: “retrieve redis matches” vs
+“ignore everything”): `context` with no key → exit 1 + the configuration error; `list` with no key
+→ exit 0; `continue --retrieve` with no key → exit 1 + the same error; `continue --jev` alone with
+no key → exit 0 (Stage B unchanged); `context "redis timeout"` against the keyword mock →
+“retrieved 3 chunks (4 sessions searched)”, every chunk carrying its `session#message` source and
+Jev's `relevance 0.93`; the *same query* against the ignore-everything mock → “retrieved 0
+chunks” with only the query ask left, proving Jev decides and nothing falls back to local scores;
+`continue <id> --jev --retrieve …` against the keyword mock → exit 0 and a native Freebuff session
+written to `/tmp/jev_keyed`. The mock server is a test scaffold only (`/tmp/jev_mock.py`) — not
+part of the repo.
+
+**Resolved open item:** the first implementation used an invented contract because the repo
+contained no Jev API format (grep-verified). Research (`docs.typesafe.ai`, OpenRouter's Jev hub,
+LiteLLM's TypeSafe passthrough) identified Jev as **TypeSafe AI's System One decision model** — a
+real external API, exactly as the user maintained — and the client was rewritten to its documented
+schema. Live probe against `api.typesafe.ai` with two mock candidates returned `candidate_1: 0.69`
+(the chunk that actually described the Redis `maxConnections` fix) versus `candidate_2: 0.13` (a
+docs/image chunk) — correct discrimination. Configuration lives in the git-ignored `.env`
+(`JEV_API_KEY`, `JEV_API_URL`, `JEV_MODEL`), with the previous key preserved there as a commented
+rollback line.
+
+## 19. Demo kit — Antigravity CLI → Jev → Freebuff (2026-10-08)
+
+**Why:** the pipeline needed to be *showable* to a customer and recordable, not just unit-tested. The
+demo tells one story in one screen: a real incident session left behind by Antigravity CLI is
+retrieved from, ranked by Jev, compressed to a budget, and written into Freebuff's own store as a new
+thread. “Txcript searches. Jev decides.”
+
+**Layout (`demo/`):**
+
+| Path | Role |
+|---|---|
+| `run.sh` | 4-act runner: seed the agy session → `context` (read-only retrieval) → `continue --retrieve --jev --with freebuff` → `list`/`view` proof. `--live` writes into the real stores; `--reset` wipes state |
+| `seed/antigravity-checkout-incident.json` | the sample session, as a **Simple** interchange document (24 messages, ~4.2k tokens): `redis-cli` dumps, a 1.9k-token `CLIENT LIST` dump, a single-line 1.5k-char structured log, a decisive root-cause line, an unrelated Safari-CSS tangent |
+| `transcript.md` | the **real** captured output of one run + a glossary of every number |
+| `VIDEO_SCRIPT.md` | shot-by-shot script: pre-flight, timecoded narration, on-screen captions, the numbers to point at, B-roll, editing notes |
+| `README.md` | customer-facing: what it proves, run modes, what is real vs scripted, troubleshooting |
+
+**Code change this needed: `CONTEXTLELEO_ANTIGRAVITY_ROOT`** (`src/harness/antigravity.rs`,
+`default_root`). Antigravity was the only SQLite harness with *no* root override (`~/.gemini/antigravity-cli`
+hard-coded), so a hermetic demo was impossible — it would have written a fake session into the user's
+real CLI history. Now `run.sh` points it (and `FREEBUFF_PROJECTS_DIR`, which already existed and sets
+`isolated: true`) at `demo/.state/`, and `rm -rf demo/.state` is complete cleanup. Verified live: the
+seed lands in the redirected root, `list --from antigravity` finds it, `~/.gemini/antigravity-cli` is
+never created. `demo/.state/` is git-ignored.
+
+**Second code change: the root is probed, not assumed** (same day, after the user reported *“i have
+antigravity app installed”*). `default_root` hard-coded `~/.gemini/antigravity-cli`, but a machine
+with the **desktop app** keeps its history in `~/.gemini/antigravity` — and an older IDE build in
+`~/.gemini/antigravity-ide` — all three sharing the same `conversations/<id>.db` layout. Now the
+first of `antigravity-cli` → `antigravity` → `antigravity-ide` that exists wins; the CLI root is only
+*assumed* (so writes land where `agy` would look) when none exists. Env override still beats all
+three. Verified on this machine: with no override, `list --from antigravity` shows the app's 15 real
+sessions (`analysis the hole project and context.md`, the LiquiGuard set, …) and `list --from
+freebuff` shows 3 real threads — “fetch from the installed apps” is now the default path, no exports
+required.
+
+**Recorded run (real Jev, `jev-latest` → `jev-1.13.0`, 2 billed calls):** Act 2 →
+`retrieved 3 chunks (1 sessions searched) → ~558 tokens`, `keep 4 · compress 0 · drop 0`, relevances
+**0.95 / 0.97 / 0.97**; Act 3 → `retrieved 7 historical context chunks`, `antigravity → freebuff`;
+Act 4 → the copy is `of=33` (1 request + 7 chunks + 25 original), **19** compressed stand-ins, the
+largest fold replacing **~1,943 tokens** at copy `#15`, and the original still intact at
+`agy#10`.
+
+**Gotchas this surfaced (add to §14's family):**
+
+1. **`context --budget` never compresses retrieved chunks.** Chunks are assembled as *user*-role
+   messages, and user text is never demoted below 0.75 importance — so a retrieval budget shows
+   `compress 0` and can legitimately exceed `--budget`. Compression is a property of the *handoff*
+   (`continue --jev`), where tool results ≥ 400 tokens fold into stand-ins. Do not promise
+   compression in the read-only command.
+2. **`--retrieve` scopes candidates to the source session's cwd** (`prepend_retrieved` passes
+   `common.meta.cwd`), so the demo's sample session must carry the demo work dir as its `cwd`, or the
+   handoff retrieves nothing. The seed templates `__DEMO_CWD__` for exactly this.
+3. **`continue` prints no id for the written session** (`write_and_report` prints
+   `source → target  location`). Scripts must re-discover it via `list --from <harness> -n 1`.
+4. **Backticks inside an unquoted heredoc execute.** The summary block in `run.sh` had
+   `` `session#message` `` and ran a command named `session#message`; the demo's last lines now avoid
+   backticks.
+5. **A stand-in names the *original* message number**, so in the copy it lands at that number + 1
+   (the retrieved-context message is prepended). The video script's `view <id>#15` derives from that,
+   not from a hard-coded index.
+6. **“Antigravity” is three installs with three stores** — the standalone CLI (`antigravity-cli`), the
+   desktop app (`antigravity`), the older IDE (`antigravity-ide`). Assuming one of them silently
+   reports “no sessions found” on a machine that has a different one. `--live` now prints which store
+   it picked, and the demo's undo commands name it back.
+7. **The desktop apps index their stores at launch, not continuously** — measured against Antigravity's
+   own language server (`--headless --app_data_dir antigravity`, `HOME` redirected at a copy of a real
+   store): startup logs `summary store: starting background reconciliation (trigger=startup)` then
+   `[Summaries] reconcile checked 15 conversations, restored 1, cached 14, skipped 0, dropped 0`. So a
+   database written into `conversations/` **is** found and indexed — `preview`, `step_count`,
+   `workspace_uris` and a 554-byte `raw_summary` all derived from the database — but only on the next
+   launch: a session written 25 s after startup was ignored, and a hand-inserted index row was
+   re-derived, so the index must not be written by hand. Two fixes landed from this: `save` prints a
+   stderr note when the target root is an app store (`app_owns_session_list`, keyed on the
+   `conversation_summaries.db` beside `conversations/` — a bare `antigravity-cli` root has none, and
+   `agy` sees writes immediately), and the `--live` undo deletes the index row as well, because a
+   deleted database leaves its row behind. Freebuff's pickup is **unmeasured** — its local API needs
+   the app's own auth token — so `--live` keeps telling users to open it after the run.
+
+**Verification of the index behaviour above** (release binary, this machine's real app store copied
+first): `contextleleo continue … --with antigravity` into the copy prints the stderr note and 0 index
+rows for the new id; starting the app's language server headless then logs `reconcile checked 15
+conversations, restored 1, cached 14, skipped 0, dropped 0` and the row exists — `step_count=25`, the
+seed's first message as `preview`, `workspace_uris=["file:///tmp/ls-work"]`, 549-byte `raw_summary`.
+Against a bare root the same write prints no note; `bash -n demo/run.sh` 0, and the `--live` banner
+(rendered with this machine's paths) shows the relaunch note and the index-row undo only when
+`conversation_summaries.db` is present.
+
+**Verification after these edits:** `cargo fmt --all --check` exit 0;
+`RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --all-features` exit 0;
+`cargo clippy -p contextleleo --lib --no-default-features` exit 0;
+`cargo test --workspace --all-features` → **548 passed / 0 failed**; `cargo build --release --locked
+-p contextleleo-cli` exit 0; `./demo/run.sh --reset` → exit 0 end to end against the real Jev API.
+
+**Verification of the root probe** (re-run after that change, `--locked` release): fmt 0, clippy 0,
+build 0, **548 passed / 0 failed**; `bash -n demo/run.sh` 0; default root, no override →
+`list --from antigravity` prints this machine's 15 real app sessions; `CONTEXTLELEO_ANTIGRAVITY_ROOT=/tmp/ct-no-such-root`
+→ “no local antigravity sessions found” (override still wins, the real store is not silently read);
+the `--live` probe resolves to `~/.gemini/antigravity`; `list --from freebuff` prints the 3 real app
+threads. **Not verified:** whether the Freebuff app *lists* a thread written underneath it while
+running — its store is read at launch and its local API needs the app's own auth token, so this was
+checked only from the CLI side. (The same question for Antigravity is now measured: indexed on the
+next launch, ignored while running — see the paragraph above.)
+
+**Demo readiness (re-rehearsed 2026-10-08, the recording day):** a fresh `./demo/run.sh --reset` ran
+end to end with **exit 0** against the real Jev API — Act 2 `~558 tokens`, relevances 0.95/0.97/0.97,
+`keep 4 · compress 0 · drop 0`; Act 3 retrieved **6** context chunks, so that run's copy is `of=32`.
+Repeated runs vary by a chunk or two (**6–7** chunks, `of=32`–`33`) because the kept set depends on
+Jev's scoring; every number in `transcript.md` stays tied to the one run it recorded. Other checks
+that day: the release binary is newer than every source file; `.env` is mode 600 with the Jev key
+present; `demo/.state/` matches `.gitignore` line 9; `list --from antigravity` reads the app's 15
+real sessions and `list --from freebuff` its 3 threads; neither desktop app was running, which suits
+the recording order — run `--live` first, then open both apps so they index the new sessions at
+launch. `agy` is not on this machine's PATH, so the desktop app is the B-roll resume surface.
+Everything in §18 and §19 is committed (2026-10-08) — see `git log` for the demo-kit commit.

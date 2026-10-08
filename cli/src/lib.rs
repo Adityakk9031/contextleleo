@@ -197,7 +197,9 @@ pub enum SessionCommand {
         /// Retrieve relevant historical context for this task/query first,
         /// prepend it to the handoff, then let --jev optimize the whole to
         /// the budget. Requires --jev. The retrieved context is traceable
-        /// (each chunk names its session#message) and no history is modified
+        /// (each chunk names its session#message) and no history is
+        /// modified. Candidates are ranked by the Jev API: set
+        /// `JEV_API_KEY` (or `TYPESAFE_API_KEY`).
         #[arg(long, value_name = "QUERY", requires = "jev")]
         retrieve: Option<String>,
         /// Harness-specific mint / import options (repeatable). Each value is
@@ -309,13 +311,13 @@ pub enum SessionCommand {
     /// Retrieve relevant historical context for a query, ranked and
     /// budgeted
     ///
-    /// Searches every stored session, ranks the matching messages
-    /// deterministically (keywords, file paths, symbols, errors, tool
-    /// names, recency), and prints the smallest useful set — each chunk
-    /// with its `session#message` source. With --jev, the assembled
-    /// context goes through the Jev optimizer to the budget (keep /
-    /// compress / drop) and the optimized form is printed. Read-only:
-    /// no session is modified.
+    /// Searches every stored session for candidate chunks, asks the Jev
+    /// API which of them matter for this query (requires `JEV_API_KEY`,
+    /// or `TYPESAFE_API_KEY`), and prints the selected set — each chunk
+    /// with its `session#message` source. With --budget, the assembled
+    /// context goes through the Jev optimizer (keep / compress / drop)
+    /// and the optimized form is printed. Read-only: no session is
+    /// modified.
     Context {
         /// What the next agent needs: a task description or question
         #[arg(value_hint = clap::ValueHint::Other)]
@@ -325,7 +327,7 @@ pub enum SessionCommand {
         /// chunks are printed as retrieved
         #[arg(long, value_name = "TOKENS")]
         budget: Option<usize>,
-        /// Maximum chunks to retrieve before optimization
+        /// Maximum chunks in the ranked context handed to the optimizer
         #[arg(long, value_name = "N", default_value_t = contextleleo::retrieval::DEFAULT_MAX_CHUNKS)]
         max_chunks: usize,
         /// Hard cap on retrieved (pre-optimization) tokens
@@ -1843,22 +1845,42 @@ fn apply_jev(common: &mut Transcript<Common>, jev: JevPlan) -> Result<(), String
 /// session being continued). Read-only over the store: chunks are freshly
 /// assembled messages, each traceable to its `session#message` source; the
 /// following `--jev` pass then optimizes session + retrieval together.
-/// Returns how many chunks were prepended.
+/// Candidates are gathered locally, then ranked through the Jev API
+/// (`JEV_API_KEY`, or `TYPESAFE_API_KEY`). Returns how many chunks were prepended.
 fn prepend_retrieved(
     common: &mut Transcript<Common>,
     query: &str,
     max_chunks: usize,
     max_tokens: Option<usize>,
 ) -> Result<usize, String> {
-    use contextleleo::retrieval::{RetrievalOptions, retrieve_local};
+    use contextleleo::jev_api::JevClient;
+    use contextleleo::retrieval::{
+        JEV_CANDIDATE_CHUNKS, RetrievalOptions, jev_filter, retrieve_local,
+    };
+    // Without a Jev key the ranking stage has no intelligence layer:
+    // stop here with the configuration error rather than silently
+    // falling back to local scores.
+    let client = JevClient::from_env().map_err(|e| e.to_string())?;
+    let cwd = common.meta.cwd.clone();
     let options = RetrievalOptions {
         max_chunks,
         max_tokens,
         harnesses: None,
-        cwd: common.meta.cwd.clone(),
+        cwd: cwd.clone(),
         ..RetrievalOptions::default()
     };
-    let chunks = retrieve_local(query, &options).map_err(|e| e.to_string())?;
+    // Gather a broad candidate set locally, then let the Jev API decide
+    // which chunks are worth prepending; `options` caps the selected set,
+    // not the candidates.
+    let candidate_options = RetrievalOptions {
+        max_chunks: JEV_CANDIDATE_CHUNKS.max(max_chunks),
+        max_tokens: None,
+        harnesses: None,
+        cwd,
+        ..RetrievalOptions::default()
+    };
+    let candidates = retrieve_local(query, &candidate_options).map_err(|e| e.to_string())?;
+    let chunks = jev_filter(&client, query, candidates, &options).map_err(|e| e.to_string())?;
     if chunks.is_empty() {
         return Ok(0);
     }
@@ -1884,7 +1906,12 @@ fn cmd_context(
     quiet: bool,
     cache: Option<&Path>,
 ) -> Result<ExitCode, String> {
-    use contextleleo::retrieval::{IndexRetriever, RetrievalOptions};
+    use contextleleo::jev_api::JevClient;
+    use contextleleo::retrieval::{IndexRetriever, JevRankedRetriever, RetrievalOptions};
+    // Fail fast on configuration: Jev decides relevance here, so without
+    // a key the command stops with the configuration error before any
+    // indexing work happens.
+    let client = JevClient::from_env().map_err(|e| e.to_string())?;
     let (index, sessions) = query::build_index(from, cwd, None, None, None, None, cache)?;
     let options = RetrievalOptions {
         max_chunks,
@@ -1894,8 +1921,9 @@ fn cmd_context(
         ..RetrievalOptions::default()
     };
     let retriever = IndexRetriever::new(&index);
+    let ranked = JevRankedRetriever::new(&retriever, &client);
     let handoff =
-        contextleleo::retrieval::retrieve_and_optimize_default(&retriever, query, &options, budget)
+        contextleleo::retrieval::retrieve_and_optimize_default(&ranked, query, &options, budget)
             .map_err(|e| e.to_string())?;
 
     if !quiet {

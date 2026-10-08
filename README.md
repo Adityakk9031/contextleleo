@@ -56,13 +56,29 @@ contextleleo crop <session-id>                # edit or trim history into a new 
 contextleleo export <session-id> --out run.json
 ```
 
-`contextleleo context "task"` searches every stored session, ranks the matching messages
-deterministically (keywords, file paths, symbols, errors, tool names, recency), and prints the
-smallest useful set — each chunk naming its `session#message` source. Add `--budget` to run the
-assembled context through Jev, which keeps, compresses, or drops each chunk to fit. Retrieval is
-read-only: no stored session is modified, and every kept chunk stays traceable to its original.
-The same lookup can lead a handoff — `contextleleo continue <session-id> --with codex --jev
---retrieve "task"` prepends the retrieved context before Jev optimizes the whole to `--budget`.
+`contextleleo context "task"` gathers candidate chunks from every stored session with a cheap
+local search (keywords, file paths, symbols, errors, tool names, recency), then asks the **Jev
+API** — TypeSafe AI's System One decision model — which of them actually matter for the task:
+contextleleo searches, Jev decides. Jev returns a probability per candidate; those at or above
+0.5 are printed with their `session#message` source. Configure it with your key:
+
+```bash
+export JEV_API_KEY=...   # your TypeSafe (Jev) API key; TYPESAFE_API_KEY also works
+# Optional overrides — these are the defaults:
+export JEV_API_URL=...   # https://api.typesafe.ai/v1/systemone
+export JEV_MODEL=...     # jev-latest
+```
+
+Without a key, `context` and `continue --retrieve` stop with a configuration error naming what to
+export; every other command (`list`, `view`, `query`, `export`, plain `continue`) needs no key.
+Only bounded excerpts of the candidates leave your machine, never the full history. Add `--budget` to
+run the assembled context through Jev's optimizer, which keeps, compresses, or drops each chunk
+to fit. Retrieval is read-only: no stored session is modified, and every kept chunk stays
+traceable to its original. The same lookup can lead a handoff — `contextleleo continue
+<session-id> --with codex --jev --retrieve "task"` prepends the retrieved context before Jev
+optimizes the whole to `--budget`.
+
+**See the whole pipeline run:** `./demo/run.sh` takes a real Antigravity CLI (`agy`) incident session, retrieves from it with Jev ranking the candidates, compresses the handoff to a token budget, and writes it into Freebuff's own store as a new thread — hermetic by default, with a [captured transcript](demo/transcript.md) and a [shot-by-shot video script](demo/VIDEO_SCRIPT.md).
 
 Move `run.json` to another machine and continue it with `contextleleo continue ./run.json --with claude_code`. Bring the project files separately.
 
