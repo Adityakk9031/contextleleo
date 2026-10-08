@@ -1827,8 +1827,9 @@ fn apply_jev(common: &mut Transcript<Common>, jev: JevPlan) -> Result<(), String
         // OverBudget can only be reached with a budget set.
         let requested = budget.unwrap_or_default();
         eprintln!(
-            "{} --budget {requested} cannot be met (best plan carries ~{} tokens); \
-             passing the least-over plan — raise --budget for a tighter fit",
+            "{} --budget {requested} is below what this handoff can shed: ~{} tokens stay \
+             because your messages and error results are never dropped. Raise --budget, \
+             or narrow the handoff with a #range",
             style::dim("warning:", style::enabled_err()),
             report.selected_tokens,
         );
