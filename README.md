@@ -51,11 +51,22 @@ from your environment (or a git-ignored `.env`), and is never logged or stored.
 
 ## Try the CLI
 
-Download a binary for macOS, Linux, or Windows from [Releases](https://github.com/Adityakk9031/contextleleo/releases), or install from source with Rust 1.96 or newer:
+Clone and build it (Rust 1.96 or newer; no npm needed):
+
+```sh
+git clone https://github.com/Adityakk9031/contextleleo
+cd contextleleo
+cargo build --release --locked -p contextleleo-cli
+./target/release/contextleleo --help        # or: cargo install --path cli --locked
+```
+
+Or install straight from GitHub without cloning:
 
 ```sh
 cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
+
+Prebuilt binaries for macOS, Linux, and Windows will appear on [Releases](https://github.com/Adityakk9031/contextleleo/releases) once the first version is published. For `context`, `--retrieve` and `--task`, set `JEV_API_KEY` first (see [What you need](#what-you-need)).
 
 Find a Claude Code session and continue it in Codex:
 
