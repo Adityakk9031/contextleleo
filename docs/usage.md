@@ -22,7 +22,7 @@ contextleleo continue <file|->[#range]        # continue a Simple document inste
 contextleleo crop <id>[#range]                # interactively cut messages and save a copy
     [--with <harness>]                    #   optionally convert the cropped copy
     [--from <harness>]                    #   scope the source lookup
-contextleleo view <id>[#range]                # view a session; compact text when piped
+contextleleo view <id>[#range] [--reveal]      # view a session; compact text when piped; secrets starred unless --reveal
     [--from <harness>]                    #   scope the id lookup to one harness
     [--no-pager]                          #   print the terminal view directly
 contextleleo export <id>[#range]              # write a session as a Simple document
@@ -318,3 +318,7 @@ git config core.hooksPath .githooks                 # pre-push runs the CI check
 ```
 
 The binary lives in its own workspace crate (`cli/`, package `contextleleo-cli`); the library at the root carries none of its dependencies.
+
+## Secrets on screen
+
+`view`, `query`, and the chunks `context` / `--retrieve` print show credential values as stars and keep the name, so a screen recording or a pasted handoff says *which* variable exists without leaking its value: `JEV_API_KEY=********`, `"password": "********"`, `Bearer ********`. It covers vendor key shapes (`sk-`, `ghp_`, `AKIA`, JWTs, PEM blocks, …) and any assignment whose name says it is a credential (`*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, …); `max_tokens=4000` is left alone. The stored session is never changed, `view --reveal` shows the real values on request, and retrieved chunks are starred before they reach Jev or the next agent's store. It is pattern-based: an unlabelled secret with no recognisable name or shape can still show, so check a recording before you publish it.

@@ -263,6 +263,12 @@ pub enum SessionCommand {
         /// Print the human-facing view directly instead of opening a pager
         #[arg(long)]
         no_pager: bool,
+        /// Show credential values as stored. By default anything that looks
+        /// like a secret (`JEV_API_KEY=…`, `sk-…`, tokens, PEM keys) is shown
+        /// as `NAME=********`, so a screen recording never leaks a key; the
+        /// stored session is not changed either way.
+        #[arg(long)]
+        reveal: bool,
     },
     /// Write a session as a Simple interchange document
     ///
@@ -495,7 +501,8 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             source,
             from,
             no_pager,
-        } => view::cmd_view(&source, from, no_pager),
+            reveal,
+        } => view::cmd_view(&source, from, no_pager, reveal),
         SessionCommand::Export { source, from, out } => {
             export::cmd_export(&source, from, out.as_deref())
         }
@@ -3385,12 +3392,21 @@ mod query {
     }
 
     /// Render `line` truncated to `width` chars, match spans emphasized.
+    /// A line that carries a credential is shown with the value starred
+    /// (`JEV_API_KEY=********`) and without match emphasis: the spans index
+    /// the stored text, which the starring shifts.
     pub(super) fn highlight(
         line: &str,
         spans: &[std::ops::Range<u32>],
         width: usize,
         color: bool,
     ) -> String {
+        let masked = contextleleo::redact::mask(line);
+        let (line, spans) = if masked == line {
+            (line, spans)
+        } else {
+            (masked.as_str(), &[][..])
+        };
         let mut out = String::new();
         let mut in_span = false;
         for (i, ch) in line.chars().take(width).enumerate() {

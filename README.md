@@ -51,7 +51,7 @@ Other ways to work with your sessions:
 ```sh
 contextleleo query "relay bug"                # search local session history
 contextleleo context "relay bug"              # retrieve the relevant history, sized to a budget
-contextleleo view <session-id>                # read a conversation in the terminal
+contextleleo view <session-id>                # read a conversation in the terminal (secret values shown as ********)
 contextleleo crop <session-id>                # edit or trim history into a new copy
 contextleleo export <session-id> --out run.json
 contextleleo continue <session-id> --jev --task "what the next agent will do"

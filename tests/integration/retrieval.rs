@@ -191,6 +191,37 @@ fn an_excluded_session_is_not_its_own_memory() {
     );
 }
 
+/// A retrieved chunk that quotes a `.env` line keeps the variable's name
+/// and shows stars for the value, so neither the printed chunks nor the
+/// handoff written into the next agent carries the key.
+#[test]
+fn retrieved_chunks_star_out_credential_values() {
+    let session = Transcript::new(
+        meta("env-session", 3, "/work/repo"),
+        vec![text_message(
+            Role::Assistant,
+            "set JEV_API_KEY=jev_live_abc123def456ghi789 before running the redis migration",
+            1,
+        )],
+    );
+    let index = index_of(&[session]);
+    let chunks = retrieve(
+        &index,
+        "redis migration JEV_API_KEY",
+        &RetrievalOptions::default(),
+    );
+    assert!(!chunks.is_empty(), "the line still ranks");
+    for chunk in &chunks {
+        assert!(!chunk.content.contains("abc123def456"), "{}", chunk.content);
+    }
+    assert!(
+        chunks
+            .iter()
+            .any(|chunk| chunk.content.contains("JEV_API_KEY=********")),
+        "{chunks:?}"
+    );
+}
+
 #[test]
 fn file_and_symbol_overlap_improves_ranking() {
     // Both sessions mention redis; one also touches the file and symbol the

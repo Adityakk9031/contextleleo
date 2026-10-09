@@ -195,9 +195,9 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 574 passing, 0 failing (this is the verified state)
+## 9. Tests — 579 passing, 0 failing (this is the verified state)
 
-**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **182 lib + 258 integration + 9 regression + 123 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
+**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **186 lib + 259 integration + 9 regression + 123 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
 `tests/integration/retrieval.rs` holds **12 `#[test]` fns** (registered in `tests/integration/main.rs` as `mod retrieval;`):
 
@@ -673,3 +673,27 @@ from the second batch's own numbering; a relevant big tool output surviving a ti
 irrelevant chatter is dropped first (and the same transcript dropping that big output under the
 rules alone); a tool pair never split; and no network call when there is nothing to judge. Full
 suite: **574 passed / 0 failed / 1 ignored** (was 564).
+
+## 21. Secrets starred on screen (2026-10-09, working tree)
+
+**What.** Anything shown to a person hides credential *values* and keeps the *names*:
+`JEV_API_KEY=********`. `contextleleo view` (default; `--reveal` shows stored values), `query`
+lines, and retrieved chunks (printed, sent to Jev, and written into the target agent's store) are
+covered. Stored sessions are never rewritten; `continue` still copies a session whole.
+
+**Why.** Recording a demo on real sessions would otherwise put `.env` contents and pasted keys on
+screen. The existing scrubber only ran on the copy sent to Jev and missed env-style names such as
+`JEV_API_KEY` (its name list only matched at the start of a word).
+
+**How.** The scanner moved from `jev_api.rs` into `src/redact.rs` (always compiled, no feature):
+`redact` (→ `[redacted]`, wire copy) and `mask` / `mask_message` / `mask_messages` (→ `********`,
+display). `sensitive_name_len` now also accepts whole identifiers ending `_key` / `apikey` or
+containing `secret`, `password`, `passwd`, `credential`, or `token` (but not `…tokens`). Quoted values
+keep their closing quote (the old opening-quote skip made the quoted branch dead). Wiring: `view`
+(`--reveal`), `highlight` in `query` (a line with a secret drops match emphasis, since spans index
+the unmasked text), and `rank_hits` in `retrieval.rs`.
+
+**Limits.** Pattern-based: an unlabelled secret with no vendor shape or credential-like name still
+shows. The MCP server and `export` are unchanged (they serve agents and files, not screens).
+Verified on this machine's real Claude Code sessions: `view` stars `*_KEY=` values, `--reveal` shows
+them. Suite: 579 passed / 0 failed / 1 ignored (was 574; +4 `redact` tests, +1 retrieval).

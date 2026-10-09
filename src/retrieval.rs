@@ -528,7 +528,10 @@ fn rank_hits(
                     session: key.clone(),
                     message_index: (hit.span.0.start < hit.span.0.end).then_some(hit.span.0.start),
                 },
-                content: hit.line.clone(),
+                // Starred here, once, so every consumer — the printed chunks,
+                // the Jev excerpt, the handoff written into the next agent —
+                // sees `NAME=********` and never the value.
+                content: crate::redact::mask(&hit.line),
                 relevance: relevance.min(1.0),
                 signals,
                 session_time: meta.timestamp,

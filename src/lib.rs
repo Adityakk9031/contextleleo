@@ -28,6 +28,7 @@ pub mod jev;
 pub mod jev_api;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local;
+pub mod redact;
 #[cfg(all(feature = "search", not(target_arch = "wasm32")))]
 pub mod retrieval;
 #[cfg(feature = "search")]

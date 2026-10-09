@@ -67,8 +67,17 @@ pub fn load_source(
     Ok((common, request))
 }
 
-pub fn cmd_view(source: &str, from: Option<HarnessId>, no_pager: bool) -> Result<ExitCode, String> {
-    let (common, request) = load_source(source, from)?;
+pub fn cmd_view(
+    source: &str,
+    from: Option<HarnessId>,
+    no_pager: bool,
+    reveal: bool,
+) -> Result<ExitCode, String> {
+    let (mut common, request) = load_source(source, from)?;
+    // The copy in memory is starred; the stored session is never touched.
+    if !reveal {
+        contextleleo::redact::mask_messages(&mut common.body);
+    }
 
     let total = common.body.len();
     let span = match &request {
