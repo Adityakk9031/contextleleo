@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center">Continue your conversation in another coding agent.</p>
+<p align="center">Find what your coding agents already worked out, and carry it into the next agent.</p>
 
 <p align="center">
   English | <a href="docs/translations/README.ja.md">日本語</a> | <a href="docs/translations/README.zh-CN.md">简体中文</a> | <a href="docs/translations/README.zh-TW.md">繁體中文</a> | <a href="docs/translations/README.ko.md">한국어</a> | <a href="docs/translations/README.de.md">Deutsch</a> | <a href="docs/translations/README.es.md">Español</a> | <a href="docs/translations/README.fr.md">Français</a> | <a href="docs/translations/README.it.md">Italiano</a> | <a href="docs/translations/README.pt-BR.md">Português (Brasil)</a> | <a href="docs/translations/README.ru.md">Русский</a> | <a href="docs/translations/README.mr.md">मराठी</a> | <a href="docs/translations/README.ta.md">தமிழ்</a>
@@ -19,15 +19,35 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-555" alt="License"></a>
 </p>
 
-contextleleo is a library for converting agent sessions. Start a conversation in Claude Code and continue it in Codex, carrying over messages, reasoning, and tool history where the target supports them.
+Your coding agents keep their own session history, locked inside each tool. contextleleo reads those real stores across Claude Code, Codex, Cursor, Antigravity, Freebuff and more, so you can:
 
-Build session search, viewers, and editors against one transcript model. contextleleo handles the agent-specific formats, with a Rust API, a JavaScript package, and a CLI.
+- **Find the old context.** Ask a question and get the relevant history from *any* agent's past sessions, each piece traced back to `session#message`. The [Jev API](https://docs.typesafe.ai) decides what matters; contextleleo searches.
+- **Hand off a trimmed session.** Continue a conversation in another agent without sending everything. Jev scores each message for the next task, large tool output is folded into stand-ins that link back to the original, and the result is written into the target agent's own store as a native session.
+- **Keep it safe.** Stored sessions are never modified, and secret values are shown as `NAME=********` on screen.
+
+It is a CLI, a Rust library, and a WebAssembly package for converting and searching sessions.
+
+> **You need a Jev API key for retrieval and trimming.** `context`, `continue --retrieve` and `continue --task` call the Jev API and stop with a clear error if no key is set. Get one at [docs.typesafe.ai](https://docs.typesafe.ai/introduction/quickstart) and run `export JEV_API_KEY=...` (`TYPESAFE_API_KEY` also works). Listing, viewing, searching, exporting, and plain converting (`continue` without `--retrieve`/`--task`) need no key. See [What you need](#what-you-need).
 
 [Try the CLI](#try-the-cli) · [Use the library](#use-the-library) · [Supported agents](#supported-agents) · [Documentation](#documentation)
 
 <p align="center">
   <img src="docs/assets/demo.gif" alt="An OpenCode session continued in Claude Code using contextleleo" width="680">
 </p>
+
+## What you need
+
+| You want to | You need |
+|---|---|
+| `list`, `view`, `query`, `export`, `crop`, `mcp`, plain `continue --with <agent>` | Just the CLI. No key, no network. |
+| `context "<question>"`, `continue --retrieve`, `continue --jev --task` | The CLI **and a Jev API key** (`JEV_API_KEY` or `TYPESAFE_API_KEY`). Without one these commands exit with a configuration error and write nothing. |
+| `continue --jev --budget N` (rule-based trimming, no `--task`) | Just the CLI. No key. |
+| The JavaScript package (`npm install contextleleo`) | Nothing. It converts and searches session text in memory; retrieval and Jev are not part of the WebAssembly build. |
+
+**Privacy.** The Jev commands send short excerpts (up to 800 characters per candidate, up to 64
+candidates per call) to the Jev API, with credential-shaped strings removed first. Full sessions are
+never uploaded. Run them only on history you are comfortable sending to that service. The key is read
+from your environment (or a git-ignored `.env`), and is never logged or stored.
 
 ## Try the CLI
 
@@ -84,7 +104,7 @@ Add `--task "what the next agent will do"` to `continue --jev` and Jev scores ev
 session being handed off for relevance to that task. Jev's score decides keep / compress / drop for each message you did not write: 0.7 or more is kept in full (even big tool output), below 0.3 is dropped, anything between becomes a stand-in with a `view` link to the original. `--budget` is optional and still trims further, least relevant first. Your messages and error results are never lowered, whatever Jev says, and
 without `--task` the default rules decide exactly as before.
 
-**See the whole pipeline run:** `./demo/run.sh` takes a real Antigravity CLI (`agy`) incident session, retrieves from it with Jev ranking the candidates, compresses the handoff to a token budget, and writes it into Freebuff's own store as a new thread — hermetic by default, with a [captured transcript](demo/transcript.md) and a [shot-by-shot video script](demo/VIDEO_SCRIPT.md).
+**See the whole pipeline run:** `./demo/run.sh` seeds an earlier incident and tonight's repeat of it into Antigravity's store format, retrieves the earlier answer with Jev ranking the candidates (never from the session being continued), trims the handoff, and writes it into Freebuff's own store as a new thread. It is hermetic by default (needs a Jev key, no agent installed), with a [captured transcript](demo/transcript.md) and a [shot-by-shot video script](demo/VIDEO_SCRIPT.md).
 
 Move `run.json` to another machine and continue it with `contextleleo continue ./run.json --with claude_code`. Bring the project files separately.
 
@@ -130,7 +150,7 @@ const output = convert(input, "claude_code", "codex");
 writeFileSync("rollout.jsonl", output);
 ```
 
-The package includes prebuilt WebAssembly for Node and Bun. It converts and searches session text in memory; your application handles files and storage. See the [JavaScript reference](docs/usage.md#npm-package).
+The package includes prebuilt WebAssembly for Node and Bun. It converts and searches session text in memory; your application handles files and storage. It does not include the CLI, local session discovery, or the Jev-powered retrieval and trimming, so it needs no API key. For those, install the CLI. See the [JavaScript reference](docs/usage.md#npm-package).
 
 ## Supported agents
 

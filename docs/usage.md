@@ -319,6 +319,10 @@ git config core.hooksPath .githooks                 # pre-push runs the CI check
 
 The binary lives in its own workspace crate (`cli/`, package `contextleleo-cli`); the library at the root carries none of its dependencies.
 
+## Jev API key
+
+`context`, `continue --retrieve`, and `continue --jev --task` call the [Jev API](https://docs.typesafe.ai/introduction/quickstart). Set `JEV_API_KEY` (or `TYPESAFE_API_KEY`) in your environment or a git-ignored `.env`; `JEV_API_URL` (default `https://api.typesafe.ai/v1/systemone`) and `JEV_MODEL` (default `jev-latest`) are optional. With no key those commands exit 1 with a message naming what to export and write nothing; there is no silent local fallback. Everything else, including rule-based `continue --jev --budget N`, works offline. The npm package is WebAssembly only and has no Jev client. Each call sends bounded, credential-scrubbed excerpts (800 characters per candidate, 64 per call) and retries transient failures up to four attempts.
+
 ## Secrets on screen
 
 `view`, `query`, and the chunks `context` / `--retrieve` print show credential values as stars and keep the name, so a screen recording or a pasted handoff says *which* variable exists without leaking its value: `JEV_API_KEY=********`, `"password": "********"`, `Bearer ********`. It covers vendor key shapes (`sk-`, `ghp_`, `AKIA`, JWTs, PEM blocks, …) and any assignment whose name says it is a credential (`*_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, …); `max_tokens=4000` is left alone. The stored session is never changed, `view --reveal` shows the real values on request, and retrieved chunks are starred before they reach Jev or the next agent's store. It is pattern-based: an unlabelled secret with no recognisable name or shape can still show, so check a recording before you publish it.

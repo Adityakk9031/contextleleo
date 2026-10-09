@@ -3,7 +3,7 @@ name = "contextleleo-cli"
 version = "0.14.4"
 edition = "2024"
 rust-version = "1.96"
-description = "CLI for listing, searching, and continuing contextleleo sessions."
+description = "CLI to find old coding-agent context and continue sessions in another agent. Retrieval and trimming need a JEV_API_KEY."
 license = "Apache-2.0"
 repository = "https://github.com/Adityakk9031/contextleleo"
 # Not published: crates.io ships only the contextleleo library. Install the CLI

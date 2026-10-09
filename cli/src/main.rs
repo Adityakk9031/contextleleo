@@ -14,7 +14,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 #[command(
     name = "contextleleo",
     version,
-    about = "List, search, and continue local AI coding sessions in any harness",
+    about = "List, search, retrieve from, and continue local AI coding sessions in any harness (context / --retrieve / --task need JEV_API_KEY)",
     after_help = contextleleo_cli::HARNESSES
 )]
 struct Cli {
