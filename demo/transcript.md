@@ -207,7 +207,7 @@ Hermetic run: delete everything with  rm -rf "demo/.state"
 
 > **Update 2026-10-09:** `jev::apply_with` now stamps each fold with its real
 > `(session, message)` origin, so the pointers below resolve under `--retrieve`
-> too. This captured run predates the fix and has not been re-recorded.
+> too. This captured run predates the fix; a re-run on 2026-10-09 (exit 0, same numbers: 3 chunks / ~598 tokens, 7 retrieved, `of=18`, 5 folds) printed stand-ins such as `message 3 … view 46f5f4de…#4`, which match the chunk header `#4` of the same earlier-incident session.
 
 
 Every stand-in is stamped with the id of the session being written and the

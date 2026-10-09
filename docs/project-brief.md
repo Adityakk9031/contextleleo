@@ -155,7 +155,7 @@ token) — its bundle ships no watcher either, so the docs say "reopen it after 
 ## Open items
 
 1. Stand-in `view` pointers under `--retrieve` — **fixed 2026-10-09** (`jev::apply_with` + origin
-   map); not yet re-measured in a live demo run, and `demo/transcript.md` predates it.
+   map); re-measured in a live demo run on 2026-10-09 (pointers match chunk headers); `demo/transcript.md` predates it.
 2. Freebuff live sidebar pickup: unmeasured (see above).
 3. B-roll rehearsal: run `--live`, then open both apps and confirm the seeded session and
    handoff appear.
