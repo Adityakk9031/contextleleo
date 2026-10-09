@@ -60,6 +60,11 @@ product name is **contextleleo** everywhere (crate, CLI binary, docs). Remote:
 - `RETRIEVE_THRESHOLD = 0.5`, candidates capped (`JEV_CANDIDATE_CHUNKS = 64`).
 - `--retrieve` **excludes the session being continued** (`RetrievalOptions.exclude_sessions`):
   a session is not its own memory, so the handoff draws on the *other* sessions' history.
+- `continue --jev --budget N --task "…"` scores **every message of the handoff session** for task
+  relevance (one Jev call per ≤64 messages; with `--retrieve`, only the continued session's own
+  messages, since prepended chunks are already ranked) and lets those scores, not the fixed local
+  rules, decide keep (≥ 0.7) / compress / drop (< 0.3) — with or without `--budget`. User messages and error results are never lowered
+  whatever Jev says; without `--task` the plan is byte-for-byte the old one.
 - Candidate excerpts are **credential-redacted and fenced as quoted data** before they leave
   the machine (the local original keeps the real value); retrieved history is assembled as
   assistant-role "quoted history", never as the recipient user's own words.

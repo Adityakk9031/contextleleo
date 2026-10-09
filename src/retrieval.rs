@@ -31,6 +31,8 @@ use std::time::Instant;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "jev_api")]
+use crate::common::ToolOutput;
 use crate::common::{Block, Message, Meta, Role};
 use crate::jev;
 #[cfg(feature = "jev_api")]
@@ -994,6 +996,166 @@ fn reconcile(
     ))
 }
 
+// ── task-aware scoring (feature `jev_api`) ────────────────────────────
+
+/// Score every message of `transcript` for relevance to the task the next
+/// agent is about to do, through the external Jev API, keyed by message
+/// index.
+///
+/// Each message with text or tool output becomes one [`JevCandidate`]: the
+/// id is the `session#message` locator every other flow prints, the content
+/// the message's own text plus its tool-result text (through [`excerpt`],
+/// exactly what `rank` already sends). One `rank` call judges up to
+/// [`JEV_CANDIDATE_CHUNKS`] messages; a longer session is split into
+/// batches of that size, one call each. Messages with nothing to judge — a
+/// bare tool call, an image — get no entry, and an empty transcript makes
+/// no call at all.
+///
+/// # Errors
+/// [`crate::Error::Remote`] when the ranking call fails, or when Jev's
+/// answers do not cover the candidates one-for-one.
+#[cfg(feature = "jev_api")]
+pub fn jev_message_relevance(
+    client: &JevClient,
+    task: &str,
+    transcript: &Transcript<Common>,
+) -> crate::Result<HashMap<usize, f32>> {
+    let mut relevance = HashMap::new();
+    let messages: Vec<(usize, JevCandidate)> = transcript
+        .body
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| {
+            let content = message_relevance_text(message);
+            (!content.trim().is_empty()).then(|| {
+                (
+                    index,
+                    JevCandidate {
+                        id: format!("{}#{}", transcript.meta.id, index + 1),
+                        content: excerpt(&content),
+                    },
+                )
+            })
+        })
+        .collect();
+    for batch in messages.chunks(JEV_CANDIDATE_CHUNKS) {
+        let candidates: Vec<JevCandidate> = batch
+            .iter()
+            .map(|(_, candidate)| candidate.clone())
+            .collect();
+        let decisions = client.rank(task, &candidates)?;
+        // `rank` answers one decision per candidate, in candidate order, so
+        // a decision maps back to the message it was built from by position.
+        for ((index, _), decision) in batch.iter().zip(&decisions) {
+            relevance.insert(*index, decision.relevance.clamp(0.0, 1.0));
+        }
+    }
+    Ok(relevance)
+}
+
+/// The text a relevance judgment sees for one message: its text blocks and
+/// its tool-result content, joined. Reasoning, tool calls, images, and
+/// artifacts carry no judgeable prose and contribute nothing.
+#[cfg(feature = "jev_api")]
+fn message_relevance_text(message: &Message) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for block in &message.content {
+        match block {
+            Block::Text { text } => parts.push(text.clone()),
+            Block::ToolResult { content, .. } => parts.push(match content {
+                ToolOutput::Text(text) => text.clone(),
+                ToolOutput::Json(value) => value.to_string(),
+            }),
+            _ => {}
+        }
+    }
+    parts.join("\n")
+}
+
+/// Jev's task-relevance judgment as the keep / compress / drop decision.
+///
+/// Wraps any [`jev::ContextScorer`]. For every **unprotected** message Jev
+/// judged, the decision comes from Jev's relevance: at least
+/// [`TASK_KEEP_FULL`] keeps it in full (even oversized tool output the base
+/// rules would fold), below [`TASK_DROP_BELOW`] drops it, and anything in
+/// between becomes a referenced stand-in. Importance follows relevance too,
+/// scaled just under the allocator's protection floor, so a `--budget` can
+/// still demote what Jev kept — most relevant last.
+///
+/// What Jev cannot override:
+/// - messages at or above [`jev::AllocatorConfig::floor_importance`] (user
+///   text, error results) keep the base score and decision;
+/// - a message with no relevance entry (nothing judgeable) keeps its base;
+/// - a tool call and its result stand or fall together: when any member of a
+///   pair survives, a `Drop` elsewhere in the pair is lifted to `Compress`.
+///
+/// Every dropped or compressed message stays one `view` away in the
+/// untouched original. Pure by construction: the network call happens
+/// before the wrap, so [`jev::ContextScorer::score`] is a function of its
+/// input.
+pub struct TaskScorer<'a, S: jev::ContextScorer> {
+    base: &'a S,
+    relevance_by_index: HashMap<usize, f32>,
+}
+
+impl<'a, S: jev::ContextScorer> TaskScorer<'a, S> {
+    /// Wrap `base` with per-message relevance keyed by position in
+    /// `transcript` (see [`jev_message_relevance`]).
+    #[must_use]
+    pub fn new(base: &'a S, relevance_by_index: HashMap<usize, f32>) -> Self {
+        Self {
+            base,
+            relevance_by_index,
+        }
+    }
+}
+
+/// Jev relevance at or above which an unprotected message is kept in full.
+pub const TASK_KEEP_FULL: f32 = 0.7;
+/// Jev relevance below which an unprotected message is dropped.
+pub const TASK_DROP_BELOW: f32 = 0.3;
+
+impl<S: jev::ContextScorer> jev::ContextScorer for TaskScorer<'_, S> {
+    fn score(&self, transcript: &Transcript<Common>) -> Vec<jev::ContextItemScore> {
+        let floor = jev::AllocatorConfig::default().floor_importance;
+        // Just under the floor: Jev's ranking orders the budget ladder but
+        // never makes a message undemotable — only the safety rules do that.
+        let ceiling = (floor - 0.01).max(0.0);
+        let mut items = self.base.score(transcript);
+        for (index, item) in items.iter_mut().enumerate() {
+            if item.importance >= floor {
+                continue; // user text and errors: the safety floor outranks Jev
+            }
+            let Some(&relevance) = self.relevance_by_index.get(&index) else {
+                continue; // nothing judgeable here: keep the base score
+            };
+            item.importance = relevance * ceiling;
+            item.future_utility = relevance;
+            item.decision = if relevance >= TASK_KEEP_FULL {
+                jev::ContextDecision::KeepFull
+            } else if relevance < TASK_DROP_BELOW {
+                jev::ContextDecision::Drop
+            } else {
+                jev::ContextDecision::Compress
+            };
+        }
+        // A pair survives as a unit: if any member stays, no member drops.
+        for group in jev::pair_groups(transcript, items.len()) {
+            let survives = group
+                .iter()
+                .any(|&index| items[index].decision != jev::ContextDecision::Drop);
+            if survives {
+                for &index in &group {
+                    if items[index].decision == jev::ContextDecision::Drop {
+                        items[index].decision = jev::ContextDecision::Compress;
+                    }
+                }
+            }
+        }
+        items
+    }
+}
+
 #[cfg(all(test, feature = "jev_api"))]
 #[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 mod jev_rank_tests {
@@ -1185,5 +1347,403 @@ mod jev_rank_tests {
         let selected = jev_filter(&client, "query", Vec::new(), &RetrievalOptions::default())
             .expect("short-circuit");
         assert!(selected.is_empty());
+    }
+}
+
+#[cfg(all(test, feature = "jev_api"))]
+#[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+mod task_scoring_tests {
+    use super::*;
+    use crate::common::Tool;
+    use crate::jev::ContextScorer as _;
+    use std::io::{Read, Write as _};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
+    fn meta() -> Meta {
+        Meta {
+            id: "task-demo".into(),
+            timestamp: DateTime::UNIX_EPOCH,
+            cwd: None,
+            git_branch: None,
+            title: None,
+            cli_version: None,
+            model: None,
+            lineage: None,
+        }
+    }
+
+    fn transcript(body: Vec<Message>) -> Transcript<Common> {
+        Transcript::new(meta(), body)
+    }
+
+    fn text_message(role: Role, body: &str) -> Message {
+        Message {
+            role,
+            content: vec![Block::Text { text: body.into() }],
+            timestamp: DateTime::UNIX_EPOCH,
+            model: None,
+            stop_reason: None,
+            usage: None,
+        }
+    }
+
+    /// An assistant tool call plus its user-side result, as separate
+    /// consecutive messages — the canonical shape every harness normalizes
+    /// into.
+    fn tool_pair(id: &str, command: &str, output: &str, is_error: bool) -> (Message, Message) {
+        let call = Message {
+            role: Role::Assistant,
+            content: vec![Block::ToolUse {
+                id: id.into(),
+                tool: Tool::from_canonical("Bash", serde_json::json!({ "command": command })),
+            }],
+            timestamp: DateTime::UNIX_EPOCH,
+            model: None,
+            stop_reason: None,
+            usage: None,
+        };
+        let result = Message {
+            role: Role::User,
+            content: vec![Block::ToolResult {
+                tool_use_id: id.into(),
+                content: ToolOutput::Text(output.into()),
+                is_error,
+            }],
+            timestamp: DateTime::UNIX_EPOCH,
+            model: None,
+            stop_reason: None,
+            usage: None,
+        };
+        (call, result)
+    }
+
+    /// A System One answer body with one `noul` probability per entry, named
+    /// `candidate_1`… in that order — one rank call's own numbering.
+    fn answers(probabilities: &[f32]) -> String {
+        let answers: std::collections::BTreeMap<String, serde_json::Value> = probabilities
+            .iter()
+            .enumerate()
+            .map(|(index, probability)| {
+                (
+                    format!("candidate_{}", index + 1),
+                    serde_json::json!({"type": "noul", "noul": probability}),
+                )
+            })
+            .collect();
+        serde_json::json!({
+            "model": "jev-1.13.0",
+            "answers": answers,
+            "usage": {"input_tokens": 434, "output_tokens": 40},
+        })
+        .to_string()
+    }
+
+    /// Serve one request per body in `replies`, in order, on loopback, and
+    /// hand back the endpoint plus what the client sent each time. The
+    /// thread ends after the last reply — closing the channel — so callers
+    /// can count the requests the server actually saw.
+    fn serve_answers(replies: Vec<String>) -> (String, mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let address = listener.local_addr().expect("local address");
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            for body in replies {
+                let (mut stream, _) = listener.accept().expect("accept");
+                let mut request = Vec::new();
+                let mut buffer = [0_u8; 4096];
+                // Read headers, then exactly Content-Length bytes of body.
+                loop {
+                    let read = stream.read(&mut buffer).expect("read request");
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&buffer[..read]);
+                    let Some(head_end) = request.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        continue;
+                    };
+                    let head = String::from_utf8_lossy(&request[..head_end]).to_ascii_lowercase();
+                    let length = head
+                        .split("content-length:")
+                        .nth(1)
+                        .and_then(|rest| rest.split("\r\n").next())
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if request.len() >= head_end + 4 + length {
+                        break;
+                    }
+                }
+                let _ = sender.send(String::from_utf8_lossy(&request).into_owned());
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                     content-length: {}\r\nconnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        (format!("http://{address}/v1/systemone"), receiver)
+    }
+
+    /// Protected messages — user text and error results — keep the base
+    /// importance and future utility whatever Jev says about them.
+    #[test]
+    fn task_scorer_leaves_protected_items_alone() {
+        let (_call, error) = tool_pair("t1", "cargo test", "boom", true);
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            error,
+        ]);
+        let base = jev::DeterministicScorer::default().score(&source);
+        assert!(base[0].importance >= 0.6, "user text is protected");
+        assert!(base[1].importance >= 0.6, "an error result is protected");
+
+        let relevance = HashMap::from([(0usize, 0.02), (1usize, 0.03)]);
+        let scored =
+            TaskScorer::new(&jev::DeterministicScorer::default(), relevance).score(&source);
+        assert_eq!(scored[0].importance, base[0].importance);
+        assert_eq!(scored[0].future_utility, base[0].future_utility);
+        assert_eq!(scored[1].importance, base[1].importance);
+        assert_eq!(scored[1].future_utility, base[1].future_utility);
+    }
+
+    /// An unprotected message takes its decision and ranking from Jev:
+    /// irrelevant prose is dropped, and its importance follows relevance
+    /// (scaled under the protection floor).
+    #[test]
+    fn task_scorer_lowers_an_unprotected_message_to_its_relevance() {
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            text_message(Role::Assistant, "Unrelated chit-chat about lunch."),
+        ]);
+        let base = jev::DeterministicScorer::default().score(&source);
+        assert!(base[1].importance < 0.6, "prose alone is unprotected");
+
+        let relevance = HashMap::from([(1usize, 0.2)]);
+        let scored =
+            TaskScorer::new(&jev::DeterministicScorer::default(), relevance).score(&source);
+        assert!((scored[1].importance - 0.2 * 0.59).abs() < 1e-6);
+        assert_eq!(scored[1].future_utility, 0.2);
+        assert_eq!(scored[1].decision, jev::ContextDecision::Drop);
+        assert_eq!(scored[0].importance, base[0].importance);
+        assert_eq!(scored[0].decision, base[0].decision);
+    }
+
+    /// A message Jev never judged keeps the deterministic score, so the
+    /// wrapper is a no-op for anything it has no opinion about.
+    #[test]
+    fn task_scorer_keeps_the_base_score_without_an_entry() {
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            text_message(Role::Assistant, "first aside"),
+            text_message(Role::Assistant, "second aside"),
+        ]);
+        let base = jev::DeterministicScorer::default().score(&source);
+
+        let relevance = HashMap::from([(1usize, 0.1)]);
+        let scored =
+            TaskScorer::new(&jev::DeterministicScorer::default(), relevance).score(&source);
+        assert_eq!(scored[1].decision, jev::ContextDecision::Drop);
+        assert_eq!(scored[2].importance, base[2].importance);
+        assert_eq!(scored[2].future_utility, base[2].future_utility);
+        assert_eq!(scored[2].decision, base[2].decision);
+    }
+
+    /// One rank call judges a session of at most [`JEV_CANDIDATE_CHUNKS`]
+    /// messages; each answer lands on the message it was built from, and a
+    /// message with nothing to judge gets no entry.
+    #[test]
+    fn jev_message_relevance_maps_answers_back_to_message_indices() {
+        let (call, result) = tool_pair("t1", "cargo test", "test output", false);
+        let source = transcript(vec![
+            text_message(Role::User, "keep the redis work"),
+            call,
+            result,
+        ]);
+        let (url, received) = serve_answers(vec![answers(&[0.9, 0.3])]);
+        let client = JevClient::new("key", url);
+
+        let relevance = jev_message_relevance(&client, "redis", &source).expect("relevance");
+        assert_eq!(relevance.len(), 2);
+        assert_eq!(relevance.get(&0), Some(&0.9));
+        assert_eq!(relevance.get(&2), Some(&0.3));
+        assert_eq!(relevance.get(&1), None, "the bare tool call is not judged");
+
+        let requests: Vec<String> = received.iter().collect();
+        assert_eq!(requests.len(), 1, "one call for <= 64 messages");
+        assert!(requests[0].contains("task-demo#1"), "{}", requests[0]);
+        assert!(requests[0].contains("task-demo#3"), "{}", requests[0]);
+        assert!(!requests[0].contains("task-demo#2"), "{}", requests[0]);
+    }
+
+    /// A session longer than [`JEV_CANDIDATE_CHUNKS`] is split into batches
+    /// of that size: 65 messages make two calls, and the 65th message's
+    /// answer comes back from the second batch's own numbering.
+    #[test]
+    fn jev_message_relevance_batches_a_long_session() {
+        let body: Vec<Message> = (0..65)
+            .map(|index| text_message(Role::Assistant, &format!("message {index}")))
+            .collect();
+        let source = transcript(body);
+        let (url, received) = serve_answers(vec![answers(&[0.5; 64]), answers(&[0.25])]);
+        let client = JevClient::new("key", url);
+
+        let relevance = jev_message_relevance(&client, "anything", &source).expect("relevance");
+        assert_eq!(relevance.len(), 65);
+        assert_eq!(relevance.get(&63), Some(&0.5));
+        assert_eq!(relevance.get(&64), Some(&0.25));
+
+        let requests: Vec<String> = received.iter().collect();
+        assert_eq!(requests.len(), 2, "65 messages need two calls");
+        assert!(requests[0].contains("task-demo#64"), "{}", requests[0]);
+        assert!(!requests[0].contains("task-demo#65"), "{}", requests[0]);
+        assert!(requests[1].contains("task-demo#65"), "{}", requests[1]);
+    }
+
+    /// Task relevance, not size, decides what a budget sheds: the chatter Jev
+    /// rates irrelevant is dropped, and the big output Jev rates relevant is
+    /// kept — folded to a stand-in only because the budget needs the room.
+    /// The rules alone keep the chatter instead.
+    #[test]
+    fn a_relevant_output_survives_a_tight_budget_while_chatter_is_dropped() {
+        let (call, result) = tool_pair(
+            "t1",
+            "cargo test",
+            &"line of test output\n".repeat(500),
+            false,
+        );
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            text_message(Role::Assistant, "Unrelated chit-chat about lunch."),
+            call,
+            result,
+        ]);
+        let (url, received) = serve_answers(vec![answers(&[0.9, 0.05, 0.95])]);
+        let client = JevClient::new("key", url);
+        let relevance =
+            jev_message_relevance(&client, "keep the redis work", &source).expect("relevance");
+        assert_eq!(received.iter().count(), 1);
+        assert_eq!(relevance.len(), 3, "the bare tool call is not judged");
+
+        let base = jev::DeterministicScorer::default();
+        let scorer = TaskScorer::new(&base, relevance);
+        let planned = jev::plan_with(&source, Some(400), &scorer);
+        let (allocated, report) = jev::allocate(&source, &planned);
+        assert_eq!(allocated.items[1].decision, jev::ContextDecision::Drop);
+        assert_eq!(allocated.items[3].decision, jev::ContextDecision::Compress);
+        assert_eq!(allocated.items[0].decision, jev::ContextDecision::KeepFull);
+        assert_ne!(report.status, jev::AllocationStatus::OverBudget);
+
+        let plain = jev::plan(&source, Some(400));
+        let (plain, _plain_report) = jev::allocate(&source, &plain);
+        assert_ne!(
+            plain.items[1].decision,
+            jev::ContextDecision::Drop,
+            "the rules alone cannot tell the chatter is irrelevant"
+        );
+    }
+
+    /// Without a budget Jev still decides: the relevant oversized output the
+    /// rules would fold is kept in full, and the irrelevant chatter the rules
+    /// would keep is dropped. `--task` is not a no-op without `--budget`.
+    #[test]
+    fn task_scores_decide_keep_compress_drop_without_a_budget() {
+        let (call, result) = tool_pair(
+            "t1",
+            "cargo test",
+            &"line of test output\n".repeat(500),
+            false,
+        );
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            text_message(Role::Assistant, "Unrelated chit-chat about lunch."),
+            text_message(Role::Assistant, "Half-related note about the pool."),
+            call,
+            result,
+        ]);
+        let plain = jev::plan(&source, None);
+        assert_eq!(plain.items[4].decision, jev::ContextDecision::Compress);
+        assert_eq!(plain.items[1].decision, jev::ContextDecision::KeepFull);
+
+        let relevance = HashMap::from([(0usize, 0.9), (1, 0.05), (2, 0.5), (4, 0.95)]);
+        let base = jev::DeterministicScorer::default();
+        let planned = jev::plan_with(&source, None, &TaskScorer::new(&base, relevance));
+        let (allocated, _report) = jev::allocate(&source, &planned);
+        assert_eq!(allocated.items[0].decision, jev::ContextDecision::KeepFull);
+        assert_eq!(allocated.items[1].decision, jev::ContextDecision::Drop);
+        assert_eq!(allocated.items[2].decision, jev::ContextDecision::Compress);
+        assert_eq!(allocated.items[4].decision, jev::ContextDecision::KeepFull);
+        jev::apply(&source, &allocated).expect("the plan applies");
+    }
+
+    /// When Jev drops one half of a tool pair but keeps the other, the
+    /// dropped half is lifted to a stand-in: the pair is never split.
+    #[test]
+    fn task_scoring_lifts_a_dropped_half_of_a_surviving_pair() {
+        let (call, result) = tool_pair("t1", "cargo test", "useful output", false);
+        let mut call = call;
+        call.content.push(Block::Text {
+            text: "running the tests now".into(),
+        });
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            call,
+            result,
+        ]);
+        let relevance = HashMap::from([(1usize, 0.02), (2, 0.95)]);
+        let base = jev::DeterministicScorer::default();
+        let planned = jev::plan_with(&source, None, &TaskScorer::new(&base, relevance));
+        assert_eq!(planned.items[1].decision, jev::ContextDecision::Compress);
+        assert_eq!(planned.items[2].decision, jev::ContextDecision::KeepFull);
+        jev::apply(&source, &planned).expect("the pair stays whole");
+    }
+
+    /// A tool call and its result are never split, whatever Jev says about
+    /// either: an irrelevant result is dropped with its call, not apart.
+    #[test]
+    fn task_scoring_never_splits_a_tool_pair() {
+        let (call, result) = tool_pair(
+            "t1",
+            "cargo test",
+            &"line of test output\n".repeat(500),
+            false,
+        );
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            call,
+            result,
+        ]);
+        let (url, _received) = serve_answers(vec![answers(&[0.9, 0.02])]);
+        let client = JevClient::new("key", url);
+        let relevance =
+            jev_message_relevance(&client, "keep the redis work", &source).expect("relevance");
+        assert_eq!(
+            relevance.len(),
+            2,
+            "the objective and the result are judged"
+        );
+        assert_eq!(relevance.get(&2), Some(&0.02));
+
+        let base = jev::DeterministicScorer::default();
+        let scorer = TaskScorer::new(&base, relevance);
+        let planned = jev::plan_with(&source, Some(1), &scorer);
+        let (allocated, _report) = jev::allocate(&source, &planned);
+        let dropped = |index: usize| allocated.items[index].decision == jev::ContextDecision::Drop;
+        assert_eq!(dropped(1), dropped(2), "the pair drops whole or not at all");
+        assert!(dropped(1), "an irrelevant pair is shed together");
+        assert_eq!(allocated.items[0].decision, jev::ContextDecision::KeepFull);
+    }
+
+    /// A transcript with nothing to judge makes no call at all.
+    #[test]
+    fn an_empty_judgment_set_makes_no_network_call() {
+        let (call, _result) = tool_pair("t1", "cargo test", "output", false);
+        let source = transcript(vec![call]);
+        // An empty URL would fail any real request; short-circuiting is what
+        // makes this succeed.
+        let client = JevClient::new("key", "");
+        let relevance = jev_message_relevance(&client, "task", &source).expect("short-circuit");
+        assert!(relevance.is_empty());
     }
 }

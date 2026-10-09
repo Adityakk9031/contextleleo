@@ -54,6 +54,8 @@ contextleleo context "relay bug"              # retrieve the relevant history, s
 contextleleo view <session-id>                # read a conversation in the terminal
 contextleleo crop <session-id>                # edit or trim history into a new copy
 contextleleo export <session-id> --out run.json
+contextleleo continue <session-id> --jev --task "what the next agent will do"
+                                             # Jev scores each message for that task
 ```
 
 `contextleleo context "task"` gathers candidate chunks from every stored session with a cheap
@@ -77,6 +79,10 @@ to fit. Retrieval is read-only: no stored session is modified, and every kept ch
 traceable to its original. The same lookup can lead a handoff — `contextleleo continue
 <session-id> --with codex --jev --retrieve "task"` prepends the retrieved context before Jev
 optimizes the whole to `--budget`.
+
+Add `--task "what the next agent will do"` to `continue --jev` and Jev scores every message of the
+session being handed off for relevance to that task. Jev's score decides keep / compress / drop for each message you did not write: 0.7 or more is kept in full (even big tool output), below 0.3 is dropped, anything between becomes a stand-in with a `view` link to the original. `--budget` is optional and still trims further, least relevant first. Your messages and error results are never lowered, whatever Jev says, and
+without `--task` the default rules decide exactly as before.
 
 **See the whole pipeline run:** `./demo/run.sh` takes a real Antigravity CLI (`agy`) incident session, retrieves from it with Jev ranking the candidates, compresses the handoff to a token budget, and writes it into Freebuff's own store as a new thread — hermetic by default, with a [captured transcript](demo/transcript.md) and a [shot-by-shot video script](demo/VIDEO_SCRIPT.md).
 

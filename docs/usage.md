@@ -114,6 +114,8 @@ contextleleo continue <id> --with codex --jev --retrieve 'relay timeout' --budge
 
 `--retrieve` prepends the retrieved context to the handoff, then `--jev` optimizes the whole to `--budget`. It requires `--jev`, and retrieval is refused for a document-sourced (`./run.json`) session.
 
+Add `--task "what the next agent will do"` to `continue --jev` and the Jev API rates every message of the session being handed off for relevance to that task (one call per 64 messages). Jev's score decides keep / compress / drop for each message you did not write: 0.7 or more is kept in full (even big tool output), below 0.3 is dropped, anything between becomes a stand-in with a `view` link to the original. `--budget` is optional and still trims further, least relevant first. Your messages and error results are never lowered, whatever Jev says, and without `--task` the default rules decide exactly as before. `--task` requires `--jev` and a key, and with `--retrieve` only the continued session's own messages are re-scored: the prepended chunks already carry the relevance retrieval ranked them by.
+
 `./demo/run.sh` runs the whole pipeline end to end — an Antigravity CLI session retrieved from, ranked by Jev, compressed, and written into Freebuff — and `demo/` ships the captured transcript and a video script. It is hermetic (both harness roots are redirected under `demo/.state`), which is also what `CONTEXTLELEO_ANTIGRAVITY_ROOT` exists for.
 
 ### MCP server

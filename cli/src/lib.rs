@@ -17,6 +17,9 @@
 //!                                           #   into referenced stand-ins, drop
 //!                                           #   provable repeats (implies a copy)
 //!     [--budget <tokens>]                   #   --jev context budget (estimated tokens)
+//!     [--task <text>]                       #   --jev: score every message for its
+//!                                           #   relevance to <text> and let those
+//!                                           #   scores steer keep/compress/drop
 //!     [--metadata <spec>]                   #   harness mint options (repeatable;
 //!                                           #   key=value or JSON object; grok_bot
 //!                                           #   uses name/description)
@@ -202,6 +205,14 @@ pub enum SessionCommand {
         /// `JEV_API_KEY` (or `TYPESAFE_API_KEY`).
         #[arg(long, value_name = "QUERY", requires = "jev")]
         retrieve: Option<String>,
+        /// Score this handoff's messages for relevance to TEXT — what the
+        /// next agent is about to do — with the Jev API, and let those
+        /// scores steer --jev's keep/compress/drop decisions instead of the
+        /// default rules. Requires --jev. Your messages and error results
+        /// are never lowered, whatever Jev says. Set `JEV_API_KEY` (or
+        /// `TYPESAFE_API_KEY`).
+        #[arg(long, value_name = "TEXT", requires = "jev")]
+        task: Option<String>,
         /// Harness-specific mint / import options (repeatable). Each value is
         /// either `key=value` or a JSON object. Merged left-to-right; unknown
         /// keys are ignored by harnesses that do not consume them. `grok_bot`
@@ -465,6 +476,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             jev,
             budget,
             retrieve,
+            task,
             metadata,
         } => cmd_continue(
             &id,
@@ -475,6 +487,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             jev,
             budget,
             retrieve.as_deref(),
+            task.as_deref(),
             &metadata,
         ),
         SessionCommand::Crop { source, with, from } => cmd_crop(&source, with, from),
@@ -1288,13 +1301,13 @@ mod jev_continue_tests {
         Transcript::new(meta, body)
     }
 
-    /// `--jev` rewrites the copy in place through `apply_jev`: oversized
-    /// tool output becomes a referenced stand-in; the message count drops
-    /// only when the planner drops something.
+    /// `--jev` rewrites the copy in place through `apply_jev_with`:
+    /// oversized tool output becomes a referenced stand-in; the message
+    /// count drops only when the planner drops something.
     #[test]
     fn apply_jev_compresses_oversized_tool_output() {
         let mut copy = jev_transcript();
-        apply_jev(&mut copy, Some(None)).unwrap();
+        apply_jev_with(&mut copy, Some(None), None, None).unwrap();
 
         assert_eq!(copy.body.len(), 2, "nothing is dropped in this shape");
         let Block::ToolResult {
@@ -1331,13 +1344,13 @@ mod jev_continue_tests {
         assert_eq!(map.origin(9), ("current".to_string(), 6));
     }
 
-    /// Without `--jev`, `apply_jev` is a no-op: the copy passes through
-    /// byte-identical.
+    /// Without `--jev`, `apply_jev_with` is a no-op: the copy passes
+    /// through byte-identical.
     #[test]
     fn apply_jev_is_a_noop_without_the_flag() {
         let original = jev_transcript();
         let mut copy = original.clone();
-        apply_jev(&mut copy, None).unwrap();
+        apply_jev_with(&mut copy, None, None, None).unwrap();
         assert_eq!(copy, original);
     }
 
@@ -1349,7 +1362,7 @@ mod jev_continue_tests {
     #[test]
     fn apply_jev_reports_an_unreachable_budget_but_still_applies() {
         let mut copy = jev_transcript();
-        apply_jev(&mut copy, Some(Some(1))).unwrap();
+        apply_jev_with(&mut copy, Some(Some(1)), None, None).unwrap();
         assert_eq!(copy.body.len(), 1, "the droppable result is dropped");
         let Block::Text { text } = &copy.body[0].content[0] else {
             panic!("expected the surviving objective");
@@ -1701,6 +1714,7 @@ fn cmd_continue(
     jev_plan: bool,
     budget: Option<usize>,
     retrieve: Option<&str>,
+    task: Option<&str>,
     metadata_specs: &[String],
 ) -> Result<ExitCode, String> {
     let metadata = parse_metadata_specs(metadata_specs)?;
@@ -1742,6 +1756,7 @@ fn cmd_continue(
             out.map(PathBuf::as_path),
             resume,
             jev,
+            task,
             metadata,
         );
     }
@@ -1762,6 +1777,7 @@ fn cmd_continue(
             wants_resume(target, out.is_some(), no_resume),
             jev,
             retrieve,
+            task,
             metadata,
         );
     }
@@ -1788,6 +1804,7 @@ fn cmd_continue(
                 wants_resume(target, out.is_some(), no_resume),
                 jev,
                 retrieve,
+                task,
                 metadata,
             )
         }
@@ -1803,22 +1820,28 @@ fn cmd_continue(
                 out.map(PathBuf::as_path),
                 wants_resume(target, out.is_some(), no_resume),
                 jev,
+                task,
                 metadata,
             )
         }
-        None => Err(match from {
-            Some(h) => format!("no {h} session matches `{src}` (try `{} list`)", program()),
-            // A path-looking argument that named no file falls through to the
-            // session lookup; say so, or the "no session" alone misleads.
-            None if src.contains(['/', '\\']) => format!(
-                "no local session matches `{src}`, and no such file exists \
-                 (a Simple document must be an existing file, or `-` for stdin)"
-            ),
-            None => format!(
-                "no local session matches `{src}` (try `{} list`)",
-                program()
-            ),
-        }),
+        None => Err(no_session_error(src, from)),
+    }
+}
+
+/// The message for an id that named no session: harness-scoped when
+/// `--from` was given, and calling out a path-looking argument that named no
+/// file (or the "no session" alone would mislead).
+fn no_session_error(src: &str, from: Option<HarnessId>) -> String {
+    match from {
+        Some(h) => format!("no {h} session matches `{src}` (try `{} list`)", program()),
+        None if src.contains(['/', '\\']) => format!(
+            "no local session matches `{src}`, and no such file exists \
+             (a Simple document must be an existing file, or `-` for stdin)"
+        ),
+        None => format!(
+            "no local session matches `{src}` (try `{} list`)",
+            program()
+        ),
     }
 }
 
@@ -1839,10 +1862,6 @@ type JevPlan = Option<Option<usize>>;
 /// An unreachable budget is reported as a warning line, not an error: the
 /// least-over plan still beats no handoff, and the caller can re-run with a
 /// larger `--budget`.
-fn apply_jev(common: &mut Transcript<Common>, jev: JevPlan) -> Result<(), String> {
-    apply_jev_with(common, jev, None)
-}
-
 /// Where the messages of a retrieval-prepended copy really came from, so
 /// stand-ins point at sessions `view` can open instead of at the copy.
 struct Prepended {
@@ -1864,16 +1883,26 @@ impl Prepended {
     }
 }
 
-/// [`apply_jev`], with the origin map of a retrieval-prepended copy.
+/// `prepended` is the origin map of a retrieval-prepended copy, and `task`
+/// the `--task` text. With `--task` the scoring runs through the Jev API
+/// (see [`task_plan`]) instead of the deterministic rules; without it the
+/// default rules decide exactly as before.
 fn apply_jev_with(
     common: &mut Transcript<Common>,
     jev: JevPlan,
     prepended: Option<&Prepended>,
+    task: Option<&str>,
 ) -> Result<(), String> {
     let Some(budget) = jev else {
         return Ok(());
     };
-    let planned = jev::plan(common, budget);
+    let (planned, scored) = match task {
+        Some(task) => {
+            let (plan, scored) = task_plan(common, budget, task, prepended)?;
+            (plan, Some(scored))
+        }
+        None => (jev::plan(common, budget), None),
+    };
     let (allocated, report) = jev::allocate(common, &planned);
     if report.status == jev::AllocationStatus::OverBudget {
         // OverBudget can only be reached with a budget set.
@@ -1886,6 +1915,15 @@ fn apply_jev_with(
             report.selected_tokens,
         );
     }
+    if let Some(scored) = scored {
+        eprintln!(
+            "{} Jev scored {scored} messages ({} kept full, {} compressed, {} dropped)",
+            style::dim("task-aware:", style::enabled_err()),
+            report.counts[0],
+            report.counts[1],
+            report.counts[2],
+        );
+    }
     let applied = match prepended {
         Some(map) => jev::apply_with(common, &allocated, &|index| map.origin(index)),
         None => jev::apply(common, &allocated),
@@ -1893,6 +1931,45 @@ fn apply_jev_with(
     .map_err(|e| e.to_string())?;
     *common = applied;
     Ok(())
+}
+
+/// Plan `common` with Jev's task-relevance scores steering the budget
+/// ladder, returning the plan and how many messages Jev judged.
+///
+/// Fails hard without a key, exactly like `--retrieve`: the task judgment
+/// has no local fallback. Only the continued session's own messages are
+/// scored — when `--retrieve` prepended chunks, those already carry the
+/// relevance retrieval ranked them by, so judging them again would be a
+/// second opinion on a decision already made.
+fn task_plan(
+    common: &Transcript<Common>,
+    budget: Option<usize>,
+    task: &str,
+    prepended: Option<&Prepended>,
+) -> Result<(jev::ContextPlan, usize), String> {
+    use contextleleo::jev_api::JevClient;
+    use contextleleo::retrieval::{TaskScorer, jev_message_relevance};
+    let client = JevClient::from_env().map_err(|e| e.to_string())?;
+    // Prepended messages lead the body; the continued session's own
+    // messages are everything after them.
+    let offset = prepended
+        .map_or(0, |map| map.origins.len())
+        .min(common.body.len());
+    let own: Transcript<Common> =
+        Transcript::new(common.meta.clone(), common.body[offset..].to_vec());
+    let relevance = jev_message_relevance(&client, task, &own).map_err(|e| e.to_string())?;
+    let judged = relevance.len();
+    // Re-key the tail's indices back into the assembled transcript.
+    let relevance = relevance
+        .into_iter()
+        .map(|(index, value)| (index + offset, value))
+        .collect();
+    let base = contextleleo::jev::DeterministicScorer::default();
+    let scorer = TaskScorer::new(&base, relevance);
+    Ok((
+        contextleleo::jev::plan_with(common, budget, &scorer),
+        judged,
+    ))
 }
 
 /// Retrieve relevant history for `query` and prepend it to `common` (the
@@ -2134,6 +2211,7 @@ fn readable_document(path: &str) -> bool {
 /// Continue a Simple document into `--with`: parse, convert, write into the
 /// target's store, launch. The document is read once and never modified;
 /// from here on the conversation lives in the target harness.
+#[allow(clippy::too_many_arguments)] // mirrors cmd_continue one-to-one
 fn continue_document(
     input: &DocInput,
     span_req: Option<&fragment::SpanReq>,
@@ -2141,6 +2219,7 @@ fn continue_document(
     out: Option<&std::path::Path>,
     resume: bool,
     jev: JevPlan,
+    task: Option<&str>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
     let target = with.ok_or_else(|| {
@@ -2171,7 +2250,7 @@ fn continue_document(
         Some(req) => fragment::sliced(&common, req)?,
         None => common,
     };
-    apply_jev(&mut copy, jev)?;
+    apply_jev_with(&mut copy, jev, None, task)?;
     fresh_identity(&mut copy, target, out);
     if copy.meta.id.is_empty() {
         // An `--out` export keeps the source identity — which stdin may not
@@ -2314,6 +2393,7 @@ fn load_amp_server_thread(id: &str) -> Result<Transcript<Common>, String> {
 /// Fetch a server-side Amp thread via `amp threads export` and continue it:
 /// same-harness resumes by id (the thread already lives where Amp reads it);
 /// any other target gets the usual convert-and-write.
+#[allow(clippy::too_many_arguments)] // mirrors cmd_continue one-to-one
 fn continue_amp_server_thread(
     id: &str,
     with: Option<HarnessId>,
@@ -2321,6 +2401,7 @@ fn continue_amp_server_thread(
     out: Option<&std::path::Path>,
     resume: bool,
     jev: JevPlan,
+    task: Option<&str>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
     let common = load_amp_server_thread(id)?;
@@ -2336,7 +2417,7 @@ fn continue_amp_server_thread(
         (None, true) => id.to_string(),
         (None, false) => {
             let mut copy = common.clone();
-            apply_jev(&mut copy, jev)?;
+            apply_jev_with(&mut copy, jev, None, task)?;
             fresh_identity(&mut copy, target, out);
             stamp_live_cwd(&mut copy, out);
             write_and_report(HarnessId::Amp, target, &copy, out, metadata)?
@@ -2345,7 +2426,7 @@ fn continue_amp_server_thread(
         // a subset of itself in place.
         (Some(req), _) => {
             let mut copy = fragment::sliced(&common, req)?;
-            apply_jev(&mut copy, jev)?;
+            apply_jev_with(&mut copy, jev, None, task)?;
             fresh_identity(&mut copy, target, out);
             stamp_live_cwd(&mut copy, out);
             write_and_report(HarnessId::Amp, target, &copy, out, metadata)?
@@ -2370,6 +2451,7 @@ fn continue_session(
     resume: bool,
     jev: JevPlan,
     retrieve: Option<&str>,
+    task: Option<&str>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
     let target = with.unwrap_or(found.harness);
@@ -2403,7 +2485,7 @@ fn continue_session(
                     s = if n == 1 { "" } else { "s" }
                 );
             }
-            apply_jev_with(&mut common, jev, prepended.as_ref())?;
+            apply_jev_with(&mut common, jev, prepended.as_ref(), task)?;
             fresh_identity(&mut common, target, out);
             stamp_live_cwd(&mut common, out);
             write_and_report(found.harness, target, &common, out, metadata)?
@@ -2426,7 +2508,7 @@ fn continue_session(
                     s = if n == 1 { "" } else { "s" }
                 );
             }
-            apply_jev_with(&mut copy, jev, prepended.as_ref())?;
+            apply_jev_with(&mut copy, jev, prepended.as_ref(), task)?;
             fresh_identity(&mut copy, target, out);
             stamp_live_cwd(&mut copy, out);
             write_and_report(found.harness, target, &copy, out, metadata)?
@@ -2446,6 +2528,7 @@ fn continue_loaded_remote(
     resume: bool,
     jev: JevPlan,
     retrieve: Option<&str>,
+    task: Option<&str>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
     let cwd = common.meta.cwd.clone();
@@ -2468,7 +2551,7 @@ fn continue_loaded_remote(
             s = if n == 1 { "" } else { "s" }
         );
     }
-    apply_jev_with(&mut copy, jev, prepended.as_ref())?;
+    apply_jev_with(&mut copy, jev, prepended.as_ref(), task)?;
     fresh_identity(&mut copy, target, out);
     stamp_live_cwd(&mut copy, out);
     let resume_id = write_and_report(source, target, &copy, out, metadata)?;
@@ -3042,6 +3125,7 @@ mod query {
                         None,
                         None,
                         with != Some(HarnessId::GrokBot),
+                        None,
                         None,
                         None,
                         None,

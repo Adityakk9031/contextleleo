@@ -602,7 +602,7 @@ fn allocated_tokens(items: &[ContextItemScore]) -> usize {
 /// and each tool pair unions its call and result into one group, so a pair
 /// demotes (and drops) as a unit. A plan not built from `transcript`
 /// (indices out of range) simply carries no group constraints.
-fn pair_groups(transcript: &Transcript<Common>, len: usize) -> Vec<Vec<usize>> {
+pub(crate) fn pair_groups(transcript: &Transcript<Common>, len: usize) -> Vec<Vec<usize>> {
     let mut label: Vec<usize> = (0..len).collect();
     for (call, result) in transcript.tool_pairs().unwrap_or_default() {
         if call >= len || result >= len {

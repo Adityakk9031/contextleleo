@@ -195,9 +195,9 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 564 passing, 0 failing (this is the verified state)
+## 9. Tests — 574 passing, 0 failing (this is the verified state)
 
-**Command:** `cargo test --workspace --all-features` → exit 0. Tallies of the 8 result lines: **564 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit, and the §19 exclusion/redaction tests grew it, latest full run 2026-10-08). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
+**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **182 lib + 258 integration + 9 regression + 123 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
 `tests/integration/retrieval.rs` holds **12 `#[test]` fns** (registered in `tests/integration/main.rs` as `mod retrieval;`):
 
@@ -613,3 +613,63 @@ launch. `agy` is not on this machine's PATH, so the desktop app is the B-roll re
 **Also shipped 2026-10-09:** Jev client retry — up to 4 attempts on 429/500/502/503/504 and transport errors, 250 ms/500 ms/1 s backoff (a 429 `Retry-After` in whole seconds replaces it, capped at 5 s), other 4xx fail immediately, final error says `after 4 attempts`; the sleeper is injectable so tests do not sleep (+7 tests).
 
 Everything in §18 and §19 above was committed at `fd3f109` (plus the project brief at `25233d2`); the two-session rebuild and the exclusion/redaction change described in this paragraph are working-tree changes, not committed at the time of writing.
+
+## 20. Task-aware trimming (2026-10-09, working tree)
+
+**What.** `continue <id> --jev --budget N --task "<what the next agent will do>"` sends every
+message of the session being handed off to the Jev API and asks how much each one matters for
+*that* task. Those relevance scores (0..1) decide keep / compress / drop for every unprotected
+message, with or without `--budget`. Without `--task` nothing changes: the plan is scored by `DeterministicScorer`
+exactly as before.
+
+**Why.** The deterministic rules only see the transcript — recency, authorship, errors,
+repetition. They cannot know that, for this particular handoff, a 2 000-token `CLIENT LIST` dump is
+the whole point while a 30-character aside is noise — or the reverse. Jev already ranks retrieval
+candidates, so the handoff asks it the same question about the session's own messages.
+
+**How.**
+- `retrieval::jev_message_relevance(client, task, transcript) -> HashMap<usize, f32>` (behind
+  `feature = "jev_api"`): one `JevCandidate` per message with text or tool output, id
+  `<session id>#<n>`, content = the message's text plus its tool-result text through the same
+  `excerpt` path `rank` already sends (redaction and fencing stay inside `rank`). One call judges up
+  to `JEV_CANDIDATE_CHUNKS` (64) messages; a longer session is batched into 64s, one call each. A
+  message with nothing judgeable (a bare tool call, an image) gets no entry, and an empty set makes
+  no call at all.
+- `retrieval::TaskScorer<'a, S>` implements `jev::ContextScorer` around a base scorer plus that map.
+  Per item: base `importance >= AllocatorConfig::floor_importance` (0.6 — user text, error results)
+  ⇒ untouched; no entry ⇒ keep the base score; otherwise the **decision** comes from Jev —
+  `relevance >= TASK_KEEP_FULL` (0.7) ⇒ `KeepFull` (even oversized output the rules would fold),
+  `< TASK_DROP_BELOW` (0.3) ⇒ `Drop`, between ⇒ `Compress` — with `importance = relevance × 0.59`
+  (just under the floor, so a budget can still demote Jev-kept messages, least relevant first) and
+  `future_utility = relevance`. Then pairs: if any member of a tool pair (`jev::pair_groups`, now
+  `pub(crate)`) survives, a `Drop` in that pair is lifted to `Compress`.
+  *Revised 2026-10-09:* the first version only changed importance, so the base rules still made
+  every decision and `--task` without `--budget` cost a call and changed nothing; relevant big
+  output also stayed folded. The decision mapping above fixes both.
+  The network call happens in `jev_message_relevance`, *before* the wrap, so `score` stays pure.
+- CLI: `cli/src/lib.rs` gained `--task <TEXT>` (`requires = "jev"`). `apply_jev_with` now takes the
+  task text; with it, `task_plan` fails hard without a key (same policy as `--retrieve`), scores
+  only the continued session's own messages — when `--retrieve` prepended chunks those already
+  carry the relevance retrieval ranked them by, so `task_plan` slices them off by
+  `Prepended.origins.len()` and re-keys the tail's indices — and plans with `TaskScorer` wrapping
+  `DeterministicScorer`. Materialization still goes through `jev::apply_with`, so stand-in `view`
+  pointers stay correct. One stderr line reports the outcome: `task-aware: Jev scored N messages (K
+  kept full, C compressed, D dropped)`.
+- The 2-arg `apply_jev` wrapper is gone; every caller (documents, Amp server threads, both session
+  paths, and the three CLI tests) now calls `apply_jev_with(…, prepended, task)` — the tests pass
+  `None, None` and their assertions are unchanged.
+
+**Rules that hold whatever Jev says.** User text and error results are never dropped or lowered
+(the floor is checked against the *base* score), and if the budget cannot be met without demoting
+them the plan still reports `OverBudget` instead of silently sacrificing them. A tool call and its
+result are never split — the base scorer keeps pairs whole and `allocate` drops whole groups.
+Without `--task`, behaviour is byte-for-byte unchanged. Every compressed message still names its
+source session and message, and that pointer resolves.
+
+**Tests (8 new, all in `retrieval::task_scoring_tests`).** Protected items untouched; an
+unprotected message lowered to its relevance; a missing entry keeping the base score; one call for
+≤64 messages with answers mapped to the right indices; 65 messages ⇒ two calls, the 65th answered
+from the second batch's own numbering; a relevant big tool output surviving a tight budget while
+irrelevant chatter is dropped first (and the same transcript dropping that big output under the
+rules alone); a tool pair never split; and no network call when there is nothing to judge. Full
+suite: **574 passed / 0 failed / 1 ignored** (was 564).
