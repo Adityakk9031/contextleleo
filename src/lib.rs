@@ -26,6 +26,8 @@ pub mod harness;
 pub mod jev;
 #[cfg(all(feature = "jev_api", not(target_arch = "wasm32")))]
 pub mod jev_api;
+#[cfg(all(feature = "jev_api", not(target_arch = "wasm32")))]
+pub mod jev_config;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local;
 pub mod redact;

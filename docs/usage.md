@@ -22,6 +22,7 @@ contextleleo continue <file|->[#range]        # continue a Simple document inste
 contextleleo crop <id>[#range]                # interactively cut messages and save a copy
     [--with <harness>]                    #   optionally convert the cropped copy
     [--from <harness>]                    #   scope the source lookup
+contextleleo setup [--status|--remove]       # optional: store a Jev key to enable retrieval and smart trimming
 contextleleo view <id>[#range] [--reveal]      # view a session; compact text when piped; secrets starred unless --reveal
     [--from <harness>]                    #   scope the id lookup to one harness
     [--no-pager]                          #   print the terminal view directly
@@ -321,7 +322,7 @@ The binary lives in its own workspace crate (`cli/`, package `contextleleo-cli`)
 
 ## Jev API key
 
-`context`, `continue --retrieve`, and `continue --jev --task` call the [Jev API](https://docs.typesafe.ai/introduction/quickstart). Set `JEV_API_KEY` (or `TYPESAFE_API_KEY`) in your environment or a git-ignored `.env`; `JEV_API_URL` (default `https://api.typesafe.ai/v1/systemone`) and `JEV_MODEL` (default `jev-latest`) are optional. With no key those commands exit 1 with a message naming what to export and write nothing; there is no silent local fallback. Everything else, including rule-based `continue --jev --budget N`, works offline. The npm package is WebAssembly only and has no Jev client. Each call sends bounded, credential-scrubbed excerpts (800 characters per candidate, 64 per call) and retries transient failures up to four attempts.
+`context`, `continue --retrieve`, and `continue --jev --task` call the [Jev API](https://docs.typesafe.ai/introduction/quickstart). Run `contextleleo setup` (asks first, hides the key as you type or reads it from a pipe, stores it owner-only in `~/.config/contextleleo/config`, or `$CONTEXTLELEO_CONFIG`), or set `JEV_API_KEY` (or `TYPESAFE_API_KEY`) in your environment, which wins over the stored key. `setup --status` reports where the key comes from without printing it and `setup --remove` deletes the stored one. At a terminal, a Jev command with no key offers to run setup on the spot; the first interactive run also prints a one-time hint. The demo script still reads a repo-local `.env`; the CLI does not. `JEV_API_URL` (default `https://api.typesafe.ai/v1/systemone`) and `JEV_MODEL` (default `jev-latest`) are optional. With no key those commands exit 1 with a message naming what to export and write nothing; there is no silent local fallback. Everything else, including rule-based `continue --jev --budget N`, works offline. The npm package is WebAssembly only and has no Jev client. Each call sends bounded, credential-scrubbed excerpts (800 characters per candidate, 64 per call) and retries transient failures up to four attempts.
 
 ## Secrets on screen
 

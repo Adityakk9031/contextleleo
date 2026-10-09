@@ -27,7 +27,7 @@ Your coding agents keep their own session history, locked inside each tool. cont
 
 It is a CLI, a Rust library, and a WebAssembly package for converting and searching sessions.
 
-> **You need a Jev API key for retrieval and trimming.** `context`, `continue --retrieve` and `continue --task` call the Jev API and stop with a clear error if no key is set. Get one at [docs.typesafe.ai](https://docs.typesafe.ai/introduction/quickstart) and run `export JEV_API_KEY=...` (`TYPESAFE_API_KEY` also works). Listing, viewing, searching, exporting, and plain converting (`continue` without `--retrieve`/`--task`) need no key. See [What you need](#what-you-need).
+> **Two features are optional and need a Jev API key: retrieval and smart trimming.** Everything else — listing, viewing, searching, exporting, and moving a session between agents — works with no account. After installing, run `contextleleo setup` to turn the two Jev features on (it asks first, hides the key as you type, and stores it readable by you only), or skip it and use contextleleo as a plain session converter. Get a key at [docs.typesafe.ai](https://docs.typesafe.ai/introduction/quickstart). See [What you need](#what-you-need).
 
 [Try the CLI](#try-the-cli) · [Use the library](#use-the-library) · [Supported agents](#supported-agents) · [Documentation](#documentation)
 
@@ -40,14 +40,16 @@ It is a CLI, a Rust library, and a WebAssembly package for converting and search
 | You want to | You need |
 |---|---|
 | `list`, `view`, `query`, `export`, `crop`, `mcp`, plain `continue --with <agent>` | Just the CLI. No key, no network. |
-| `context "<question>"`, `continue --retrieve`, `continue --jev --task` | The CLI **and a Jev API key** (`JEV_API_KEY` or `TYPESAFE_API_KEY`). Without one these commands exit with a configuration error and write nothing. |
+| `context "<question>"`, `continue --retrieve`, `continue --jev --task` | The CLI **and a Jev API key**: run `contextleleo setup`, or `export JEV_API_KEY=...` (`TYPESAFE_API_KEY` also works; the environment wins over the stored key). Without one these commands write nothing; at a terminal they offer to run `setup`, in a script they exit 1 with a configuration error. |
 | `continue --jev --budget N` (rule-based trimming, no `--task`) | Just the CLI. No key. |
 | The JavaScript package (`npm install contextleleo`) | Nothing. It converts and searches session text in memory; retrieval and Jev are not part of the WebAssembly build. |
 
 **Privacy.** The Jev commands send short excerpts (up to 800 characters per candidate, up to 64
 candidates per call) to the Jev API, with credential-shaped strings removed first. Full sessions are
 never uploaded. Run them only on history you are comfortable sending to that service. The key is read
-from your environment (or a git-ignored `.env`), and is never logged or stored.
+from your environment or the file `contextleleo setup` writes (`~/.config/contextleleo/config`,
+owner-only), and is never logged. `contextleleo setup --status` shows where it comes from without
+printing it; `setup --remove` deletes it.
 
 ## Try the CLI
 
@@ -66,7 +68,7 @@ Or install straight from GitHub without cloning:
 cargo install --git https://github.com/Adityakk9031/contextleleo contextleleo-cli --locked
 ```
 
-Prebuilt binaries for macOS, Linux, and Windows will appear on [Releases](https://github.com/Adityakk9031/contextleleo/releases) once the first version is published. For `context`, `--retrieve` and `--task`, set `JEV_API_KEY` first (see [What you need](#what-you-need)).
+Prebuilt binaries for macOS, Linux, and Windows will appear on [Releases](https://github.com/Adityakk9031/contextleleo/releases) once the first version is published. Then, only if you want retrieval and smart trimming, run `contextleleo setup` and paste your Jev key (see [What you need](#what-you-need)).
 
 Find a Claude Code session and continue it in Codex:
 
@@ -102,8 +104,8 @@ export JEV_API_URL=...   # https://api.typesafe.ai/v1/systemone
 export JEV_MODEL=...     # jev-latest
 ```
 
-Without a key, `context` and `continue --retrieve` stop with a configuration error naming what to
-export; every other command (`list`, `view`, `query`, `export`, plain `continue`) needs no key.
+Without a key, `context` and `continue --retrieve` stop with a configuration error pointing at
+`contextleleo setup`; every other command (`list`, `view`, `query`, `export`, plain `continue`) needs no key.
 Only bounded excerpts of the candidates leave your machine, never the full history. Add `--budget` to
 run the assembled context through Jev's optimizer, which keeps, compresses, or drops each chunk
 to fit. Retrieval is read-only: no stored session is modified, and every kept chunk stays

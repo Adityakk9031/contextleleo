@@ -74,6 +74,7 @@ mod graphics;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 mod pager;
+mod setup;
 mod view;
 
 pub const HARNESSES: &str = "harnesses: claude_code, claude_chat, chatgpt, codex, opencode, pi, campfire, cursor, cursor_desktop, grok, fx, hermes, \
@@ -111,6 +112,20 @@ pub enum Command {
     /// Serve the Model Context Protocol over stdin/stdout
     #[cfg(feature = "mcp")]
     Mcp,
+    /// Turn on retrieval and smart trimming by storing a Jev API key
+    ///
+    /// Everything else works without an account. Asks first, hides the key
+    /// as you type (or reads it from stdin when piped), and stores it
+    /// readable by you only. `--status` shows where a key comes from without
+    /// printing it; `--remove` deletes the stored one.
+    Setup {
+        /// Show whether a Jev key is configured and where it comes from
+        #[arg(long, conflicts_with = "remove")]
+        status: bool,
+        /// Delete the stored Jev key
+        #[arg(long)]
+        remove: bool,
+    },
     /// Print a completion script for a shell (add it to your shell config)
     Completion {
         #[arg(value_enum)]
@@ -425,8 +440,15 @@ pub fn run(cli: Cli) -> ExitCode {
         program: None,
         cache: cli.cache,
     };
+    if !matches!(
+        cli.command,
+        Command::Setup { .. } | Command::Completion { .. }
+    ) {
+        setup::first_run_hint();
+    }
     let result = match cli.command {
         Command::Session(command) => run_session(command, &options),
+        Command::Setup { status, remove } => setup::cmd_setup(status, remove),
         #[cfg(feature = "mcp")]
         Command::Mcp => tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -1852,6 +1874,24 @@ fn no_session_error(src: &str, from: Option<HarnessId>) -> String {
     }
 }
 
+/// A Jev client from the environment or the stored key. With none, a person
+/// at a terminal is offered `setup` on the spot; a script gets the plain
+/// configuration error.
+fn jev_client() -> Result<contextleleo::jev_api::JevClient, String> {
+    use contextleleo::jev_api::JevClient;
+    match JevClient::from_env() {
+        Ok(client) => Ok(client),
+        Err(error @ contextleleo::Error::JevNotConfigured(_)) => {
+            if setup::offer()? {
+                JevClient::from_env().map_err(|e| e.to_string())
+            } else {
+                Err(error.to_string())
+            }
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 /// The `--jev` planning request: `None` when the flag is absent, otherwise
 /// the optional `--budget` token cap.
 type JevPlan = Option<Option<usize>>;
@@ -1954,9 +1994,8 @@ fn task_plan(
     task: &str,
     prepended: Option<&Prepended>,
 ) -> Result<(jev::ContextPlan, usize), String> {
-    use contextleleo::jev_api::JevClient;
     use contextleleo::retrieval::{TaskScorer, jev_message_relevance};
-    let client = JevClient::from_env().map_err(|e| e.to_string())?;
+    let client = jev_client()?;
     // Prepended messages lead the body; the continued session's own
     // messages are everything after them.
     let offset = prepended
@@ -1995,14 +2034,13 @@ fn prepend_retrieved(
     max_chunks: usize,
     max_tokens: Option<usize>,
 ) -> Result<Prepended, String> {
-    use contextleleo::jev_api::JevClient;
     use contextleleo::retrieval::{
         JEV_CANDIDATE_CHUNKS, RetrievalOptions, jev_filter, retrieve_local,
     };
     // Without a Jev key the ranking stage has no intelligence layer:
     // stop here with the configuration error rather than silently
     // falling back to local scores.
-    let client = JevClient::from_env().map_err(|e| e.to_string())?;
+    let client = jev_client()?;
     let cwd = common.meta.cwd.clone();
     let source_id = common.meta.id.clone();
     let options = RetrievalOptions {
@@ -2072,12 +2110,11 @@ fn cmd_context(
     quiet: bool,
     cache: Option<&Path>,
 ) -> Result<ExitCode, String> {
-    use contextleleo::jev_api::JevClient;
     use contextleleo::retrieval::{IndexRetriever, JevRankedRetriever, RetrievalOptions};
     // Fail fast on configuration: Jev decides relevance here, so without
     // a key the command stops with the configuration error before any
     // indexing work happens.
-    let client = JevClient::from_env().map_err(|e| e.to_string())?;
+    let client = jev_client()?;
     let (index, sessions) = query::build_index(from, cwd, None, None, None, None, cache)?;
     let options = RetrievalOptions {
         max_chunks,

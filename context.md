@@ -195,9 +195,9 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 579 passing, 0 failing (this is the verified state)
+## 9. Tests — 584 passing, 0 failing (this is the verified state)
 
-**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **186 lib + 259 integration + 9 regression + 123 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
+**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 123 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
 `tests/integration/retrieval.rs` holds **12 `#[test]` fns** (registered in `tests/integration/main.rs` as `mod retrieval;`):
 
@@ -697,3 +697,24 @@ the unmasked text), and `rank_hits` in `retrieval.rs`.
 shows. The MCP server and `export` are unchanged (they serve agents and files, not screens).
 Verified on this machine's real Claude Code sessions: `view` stars `*_KEY=` values, `--reveal` shows
 them. Suite: 579 passed / 0 failed / 1 ignored (was 574; +4 `redact` tests, +1 retrieval).
+
+## 22. `setup`: the optional Jev key (2026-10-10, working tree)
+
+**What.** `contextleleo setup` asks whether to enable retrieval and smart trimming, then reads the Jev
+key with echo off (or from a pipe) and stores it in `~/.config/contextleleo/config` (`$XDG_CONFIG_HOME`,
+`%APPDATA%`, or `$CONTEXTLELEO_CONFIG`) with mode 0600. `--status` reports the source (env var or file)
+without printing the key; `--remove` deletes it. `JevClient::from_env` reads the environment first,
+then this file. A Jev command with no key offers `setup` on the spot at a terminal (`jev_client()` in
+`cli/src/lib.rs`) and exits 1 with the usual error in a script; the first interactive run prints a
+one-time hint (marker `.setup-hint` beside the config). `cargo install` cannot prompt, so the question
+comes on first run, not at install. Declining leaves contextleleo a plain converter/viewer.
+
+**Where.** `src/jev_config.rs` (library; path, parse, save, remove, key source; 5 tests),
+`cli/src/setup.rs`, `Command::Setup` in `cli/src/lib.rs`. The not-configured message now says
+`run contextleleo setup (or export …)`. **Docs fix:** the CLI never read `.env` (only `demo/run.sh`
+does); README/usage no longer claim it does.
+
+**Verified** (release binary, isolated `CONTEXTLELEO_CONFIG`, fake key, dead endpoint — no network
+spend): status none → piped setup (file mode `-rw-------`) → status file → `context` uses the stored key
+→ env beats file → `--remove` → back to the configuration error; and through a pty: the explanation,
+`[y/N]`, hidden key entry, and the once-only hint. Suite: 584 passed / 0 failed / 1 ignored (was 579).

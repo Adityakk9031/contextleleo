@@ -289,7 +289,15 @@ impl JevClient {
     /// Jev-powered command stops with one actionable configuration error
     /// instead of a mystery failure.
     pub fn from_env() -> crate::Result<Self> {
-        Self::from_lookup(|name| std::env::var(name).ok())
+        // The environment wins; the file `contextleleo setup` writes is the
+        // fallback, so an installed CLI works from any shell.
+        let stored = crate::jev_config::load();
+        Self::from_lookup(|name| {
+            std::env::var(name)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| stored.get(name).cloned())
+        })
     }
 
     /// [`from_env`] over an injectable lookup — the env-independent core,
@@ -300,9 +308,9 @@ impl JevClient {
         let key = non_blank(API_KEY_ENV).or_else(|| non_blank(API_KEY_ALIAS_ENV));
         let Some(key) = key else {
             return Err(Error::JevNotConfigured(format!(
-                "export {API_KEY_ENV} (or {API_KEY_ALIAS_ENV}) — get a key at \
-                 https://docs.typesafe.ai/introduction/quickstart — to send retrieval \
-                 candidates to Jev"
+                "run `contextleleo setup` (or export {API_KEY_ENV} / {API_KEY_ALIAS_ENV}) — \
+                 get a key at https://docs.typesafe.ai/introduction/quickstart — to send \
+                 retrieval candidates to Jev"
             )));
         };
         Ok(Self {
