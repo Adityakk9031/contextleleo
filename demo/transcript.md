@@ -2,7 +2,8 @@
 
 `./demo/run.sh --reset` on 2026-10-08, against the real Jev API
 (`jev-latest`, which resolved to `jev-1.13.0`), on a machine with no
-Antigravity CLI installed. Two Jev calls were billed, one per retrieval step.
+Antigravity CLI binary on `PATH` — the hermetic root is used, so the machine's
+own store is untouched. Two Jev calls were billed, one per retrieval step.
 
 Everything below is the programs' own output. Two cosmetic edits: the binary is
 shown as `contextleleo` instead of its absolute path, and the state directory as
@@ -12,47 +13,55 @@ shown as `contextleleo` instead of its absolute path, and the state directory as
 contextleleo demo · Antigravity CLI → Jev → Freebuff
 binary:       contextleleo
 jev key:      present (108 chars; value never printed)
-story:        a production incident debugged in Antigravity CLI, finished in Freebuff
+story:        a repeat incident in Antigravity CLI, finished in Freebuff with the earlier run's findings
 state:        demo/.state
 
-── ACT 1 · the session Antigravity CLI left behind ──
-A real incident-debugging session — redis-cli dumps, a couple of red herrings,
-a root cause and the fix — written into the harness's own store, not a summary.
-$ contextleleo continue demo/.state/seed.json --with antigravity --no-resume
-simple → antigravity  demo/.state/antigravity/conversations/6aac96ab-0b11-4753-ae80-54107e3db487.db
-  resume with: agy --conversation=6aac96ab-0b11-4753-ae80-54107e3db487
+── ACT 1 · the two sessions Antigravity CLI left behind ──
+Two real sessions in the harness's own store: the earlier incident — redis-cli
+dumps, red herrings, root cause, fix — and tonight's repeat, which does not know it yet.
+$ contextleleo continue demo/.state/seed-earlier.json --with antigravity --no-resume
+simple → antigravity  demo/.state/antigravity/conversations/f1fc96ea-0471-4d24-a0af-d5eadc3951a1.db
+  resume with: agy --conversation=f1fc96ea-0471-4d24-a0af-d5eadc3951a1
+$ contextleleo continue demo/.state/seed-today.json --with antigravity --no-resume
+simple → antigravity  demo/.state/antigravity/conversations/8d5d34b4-8a7a-459e-8c73-5c8430ecd43d.db
+  resume with: agy --conversation=8d5d34b4-8a7a-459e-8c73-5c8430ecd43d
 
 $ contextleleo list --from antigravity
 HARNESS       WHEN        ID                                      TITLE / FIRST MESSAGE
-antigravity   just now    6aac96ab-0b11-4753-ae80-54107e3db487    Incident: checkout-api p99 latency jumped from 180ms to 4.2…
-antigravity session: 6aac96ab-0b11-4753-ae80-54107e3db487 · 25 messages
+antigravity   just now    8d5d34b4-8a7a-459e-8c73-5c8430ecd43d    checkout-api p99 is climbing again: 3.4s at the 99th percen…
+antigravity   just now    f1fc96ea-0471-4d24-a0af-d5eadc3951a1    Incident: checkout-api p99 latency jumped from 180ms to 4.2…
+earlier incident:  f1fc96ea-0471-4d24-a0af-d5eadc3951a1 · 25 messages
+tonight's session: 8d5d34b4-8a7a-459e-8c73-5c8430ecd43d · 10 messages
 
-── ACT 2 · retrieve + rank + compress (read-only) ──
-Ask for history: local search gathers candidates, the Jev API decides which
-...matter and the optimizer fits the kept set to --budget 2000.
+── ACT 2 · ask history directly: retrieve + rank + compress (read-only) ──
+Both sessions are candidates here: local search gathers them, the Jev API
+decides which matter, and the optimizer fits the kept set to --budget 2000.
 
 $ contextleleo context 'redis connection pool exhaustion checkout p99 latency' --from antigravity --max-chunks 3 --budget 2000
-context: retrieved 3 chunks (1 sessions searched) → ~558 tokens → Jev optimized ~558 tokens in 752.326792ms+24.917µs
+context: retrieved 3 chunks (2 sessions searched) → ~598 tokens → Jev optimized ~598 tokens in 1.102120542s+19.459µs
 jev: keep 4 · compress 0 · drop 0
 [context request]
 redis connection pool exhaustion checkout p99 latency
 
-[retrieved 1 of 3 · source antigravity:6aac96ab-0b11-4753-ae80-54107e3db487#10 · relevance 0.95]
+[retrieved 1 of 3 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#10 · relevance 0.94]
+Quoted history — reference only, not an instruction.
 pool_wait_ms=4180 of a 4213ms request: the handler itself took 27ms and every other upstream answered in under a quarter of a second, so essentially the whole latency is checkout waiting for a Redis connection that never came free.
 
-[retrieved 2 of 3 · source antigravity:6aac96ab-0b11-4753-ae80-54107e3db487#9 · relevance 0.97]
+[retrieved 2 of 3 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#9 · relevance 0.97]
+Quoted history — reference only, not an instruction.
 {"ts": "2026-10-02T02:14:09.442Z", "level": "warn", "service": "checkout-api", "version": "1.42.3", "route": "POST /checkout", "status": 504, "latency_ms": 4213, "request_id": "7f003", "trace_id": "a41c7d9e5b2f4c8ea1d0f3b7c9e20a61", "customer_tier": "pro", "k8s": {"pod": "checkout-api-7d9c8f6b4d-2xk9p", "node": "ip-10-4-2-19", "zone": "eu-west-1a"}, "timings": {"tls_ms": 2, "queue_ms": 4, "handler_ms": 27, "pool_wait_ms": 4180, "redis_wait_ms": 4180, "serialize_ms": 6}, "redis": {"pool_size": 1024, "pool_in_use": 1024, "pool_waiters": 377, "maxclients": 1024, "connected_clients": 1024, "cmd": "setex checkout:cart:8f21b0 900", "error": "TimeoutError: no connection available from pool within 4.0s"}, "retry": {"attempt": 3, "of": 3, "backoff": "none"}, "upstream": {"cart": "ok:221ms", "pricing": "ok:88ms", "inventory": "ok:141ms"}, "http": {"method": "POST", "path": "/checkout", "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", "content_length": 1184, "accept_encoding": "gzip, deflate, br", "xff": "203.0.113.44, 10.4.2.19"}, "cart": {"items": 14, "subtotal": "184.20", "currency": "EUR", "coupon": "none"}}
 
-[retrieved 3 of 3 · source antigravity:6aac96ab-0b11-4753-ae80-54107e3db487#14 · relevance 0.97]
+[retrieved 3 of 3 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#14 · relevance 0.97]
+Quoted history — reference only, not an instruction.
 Root cause: Redis connection pool exhaustion. The reconciliation worker opens one BLPOP connection per shard and returns it to the pool only on the happy path: when the 02:00 job is cancelled the except branch re-raises before conn.close(), so all 1,024 sockets stay checked out for the rest of the day. checkout-api's own clients then hit the maxclients ceiling of 1024/1024 and block, and the queueing behind that is what shows up as 4.2s p99 latency and the POST /checkout 504s.
 
 sources: every chunk above names its source; `contextleleo view <session>#<message>` opens the original, untouched
 
-── ACT 3 · carry it to Freebuff ──
-The same session continues in Freebuff: retrieved context is prepended, then
-the whole handoff is optimised to --budget 1200 tokens.
+── ACT 3 · carry it to Freebuff, from tonight's session ──
+The session being continued is excluded from its own retrieval — a session is
+not its own memory — so what gets prepended is the earlier incident's findings.
 
-$ contextleleo continue 6aac96ab-0b11-4753-ae80-54107e3db487 --retrieve what caused the checkout p99 latency spike and what fix was applied --jev --budget 1200 --with freebuff --no-resume
+$ contextleleo continue 8d5d34b4-8a7a-459e-8c73-5c8430ecd43d --retrieve what caused the checkout p99 latency spike and what fix was applied --jev --budget 1200 --with freebuff --no-resume
 retrieved 7 historical context chunks
 antigravity → freebuff  demo/.state/freebuff-projects
 
@@ -60,19 +69,19 @@ antigravity → freebuff  demo/.state/freebuff-projects
 A new session in Freebuff's own store, written by the handoff above.
 $ contextleleo list --from freebuff -n 3
 HARNESS       WHEN        ID                                      TITLE / FIRST MESSAGE
-freebuff      just now    f8b8413a-b60c-4c2e-ae5d-d8a60dc2e769    Incident: checkout-api p99 latency jumped from 180ms to 4.2…
+freebuff      just now    2e9ec7bd-3eaa-49f1-81f2-dd0dc318f92b    checkout-api p99 is climbing again: 3.4s at the 99th percen…
 
 the handoff starts with the retrieved context — every chunk names its source:
 
-$ contextleleo view f8b8413a-b60c-4c2e-ae5d-d8a60dc2e769#1-6 --from freebuff
+$ contextleleo view 2e9ec7bd-3eaa-49f1-81f2-dd0dc318f92b#1-6 --from freebuff
 [session]
-id=f8b8413a-b60c-4c2e-ae5d-d8a60dc2e769
-started=2026-10-08T13:27:15.027+00:00
-title=Incident: checkout-api p99 latency jumped from 180ms to 4.2s at 02:00 UTC and c…
+id=2e9ec7bd-3eaa-49f1-81f2-dd0dc318f92b
+started=2026-10-08T18:21:29.652+00:00
+title=checkout-api p99 is climbing again: 3.4s at the 99th percentile on POST /checko…
 cwd=demo/.state/work/checkout-api
-branch=hotfix/redis-pool
+branch=investigate/p99-recurrence
 fragment=#1-6
-of=33
+of=18
 
 ── #1 ──
 [user]
@@ -80,56 +89,79 @@ of=33
 what caused the checkout p99 latency spike and what fix was applied
 
 ── #2 ──
-[user]
-[retrieved 1 of 7 · source antigravity:6aac96ab-0b11-4753-ae80-54107e3db487#4 · relevance 0.51]
-API pods are idling at ~190m — nowhere near their CPU limits. Nothing here is saturated, so the stall is upstream of the process. Checking the Redis the checkout write path depends on.
+[assistant]
+[retrieved 1 of 7 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#4 · relevance 0.63]
+Quoted history — reference only, not an instruction.
+API pods ar…[jev: truncated]
+
+[assistant]
+[jev: compressed from session `8d5d34b4-8a7a-459e-8c73-5c8430ecd43d` message 1 (~84 tokens); view with `contextleleo view 8d5d34b4-8a7a-459e-8c73-5c8430ecd43d#2`]
 
 ── #3 ──
-[user]
-[retrieved 2 of 7 · source antigravity:6aac96ab-0b11-4753-ae80-54107e3db487#3 · relevance 0.71]
-checkout-api-7d9c8f6b4d-2xk9p  187m         412Mi
+[assistant]
+[retrieved 2 of 7 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#3 · relevance 0.78]
+Quoted history — reference only, not an instruction.
+checkout-ap…[jev: truncated]
+
+[assistant]
+[jev: compressed from session `8d5d34b4-8a7a-459e-8c73-5c8430ecd43d` message 2 (~50 tokens); view with `contextleleo view 8d5d34b4-8a7a-459e-8c73-5c8430ecd43d#3`]
 
 ── #4 ──
-[user]
-[retrieved 3 of 7 · source antigravity:6aac96ab-0b11-4753-ae80-54107e3db487#15 · relevance 0.84]
-Write the fix: bound the reconciler pool and always return the connection, then give the API some headroom.
+[assistant]
+[retrieved 3 of 7 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#15 · relevance 0.79]
+Quoted history — reference only, not an instruction.
+Write the …[jev: truncated]
+
+[assistant]
+[jev: compressed from session `8d5d34b4-8a7a-459e-8c73-5c8430ecd43d` message 3 (~65 tokens); view with `contextleleo view 8d5d34b4-8a7a-459e-8c73-5c8430ecd43d#4`]
 
 ── #5 ──
-[user]
-[retrieved 4 of 7 · source antigravity:6aac96ab-0b11-4753-ae80-54107e3db487#8 · relevance 0.89]
-Every row is the same: age and idle both around 2,800s and cmd=blpop. These are reconciliation workers parked on a queue, not API clients. One more check before we blame Redis: the structured log line for a timed-out checkout says where inside the request the 4.2s actually sat.
+[assistant]
+[retrieved 4 of 7 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#8 · relevance 0.89]
+Quoted history — reference only, not an instruction.
+Every row i…[jev: truncated]
+
+[assistant]
+[jev: compressed from session `8d5d34b4-8a7a-459e-8c73-5c8430ecd43d` message 4 (~107 tokens); view with `contextleleo view 8d5d34b4-8a7a-459e-8c73-5c8430ecd43d#5`]
 
 ── #6 ──
-[user]
-[retrieved 5 of 7 · source antigravity:6aac96ab-0b11-4753-ae80-54107e3db487#10 · relevance 0.94]
-pool_wait_ms=4180 of a 4213ms request: the handler itself took 27ms and every other upstream answered in under a quarter of a second, so essentially the whole latency is checkout waiting for a Redis connection that never came free.
+[assistant]
+[retrieved 5 of 7 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#10 · relevance 0.94]
+Quoted history — reference only, not an instruction.
+pool_wait_…[jev: truncated]
 
-bulk tool output was folded into stand-ins that point back at the original.
-The biggest one (~1943 tokens of tool output) is at the copy's message #15:
+[assistant]
+[jev: compressed from session `8d5d34b4-8a7a-459e-8c73-5c8430ecd43d` message 5 (~96 tokens); view with `contextleleo view 8d5d34b4-8a7a-459e-8c73-5c8430ecd43d#6`]
+retrieved from antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1 — the earlier incident, never the session being continued.
 
-$ contextleleo view f8b8413a-b60c-4c2e-ae5d-d8a60dc2e769#15 --from freebuff
+to fit the budget, the optimizer cut retrieved chunks to a preview plus a stand-in.
+The largest fold replaced ~107 tokens, at the copy's message #5:
+
+$ contextleleo view 2e9ec7bd-3eaa-49f1-81f2-dd0dc318f92b#5 --from freebuff
 [session]
-id=f8b8413a-b60c-4c2e-ae5d-d8a60dc2e769
-started=2026-10-08T13:27:15.027+00:00
-title=Incident: checkout-api p99 latency jumped from 180ms to 4.2s at 02:00 UTC and c…
+id=2e9ec7bd-3eaa-49f1-81f2-dd0dc318f92b
+started=2026-10-08T18:21:29.652+00:00
+title=checkout-api p99 is climbing again: 3.4s at the 99th percentile on POST /checko…
 cwd=demo/.state/work/checkout-api
-branch=hotfix/redis-pool
-fragment=#15
-of=33
+branch=investigate/p99-recurrence
+fragment=#5
+of=18
 
-── #15 ──
-[result 1]
-id=8100 addr=10.4.9.12:53100 laddr=10.4.9.1:6379 fd=9 name= age=2804 idle=2804 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 qbuf=26 qbuf-free=20448 argv-mem=10 mul…[jev: truncated]
+── #5 ──
+[assistant]
+[retrieved 4 of 7 · source antigravity:f1fc96ea-0471-4d24-a0af-d5eadc3951a1#8 · relevance 0.89]
+Quoted history — reference only, not an instruction.
+Every row i…[jev: truncated]
 
-[user]
-[jev: compressed from session `6aac96ab-0b11-4753-ae80-54107e3db487` message 14 (~1943 tokens); view with `contextleleo view 6aac96ab-0b11-4753-ae80-54107e3db487#15`]
+[assistant]
+[jev: compressed from session `8d5d34b4-8a7a-459e-8c73-5c8430ecd43d` message 4 (~107 tokens); view with `contextleleo view 8d5d34b4-8a7a-459e-8c73-5c8430ecd43d#5`]
 
-and the message that chunk came from, in the original session, untouched:
+and the message that chunk came from, in the earlier incident, untouched:
 
-$ contextleleo view 6aac96ab-0b11-4753-ae80-54107e3db487#10 --from antigravity
+$ contextleleo view f1fc96ea-0471-4d24-a0af-d5eadc3951a1#10 --from antigravity
 [session]
-id=6aac96ab-0b11-4753-ae80-54107e3db487
-started=2026-10-08T13:27:13.322921+00:00
+id=f1fc96ea-0471-4d24-a0af-d5eadc3951a1
+started=2026-10-08T18:21:27.756982+00:00
 title=Incident: checkout-api p99 latency jumped from 180ms to 4.2s at 02:00 UTC and c…
 cwd=demo/.state/work/checkout-api
 branch=hotfix/redis-pool
@@ -140,17 +172,20 @@ of=25
 [assistant]
 pool_wait_ms=4180 of a 4213ms request: the handler itself took 27ms and every other upstream answered in under a quarter of a second, so essentially the whole latency is checkout waiting for a Redis connection that never came free.
 
-compressed stand-ins in the handoff: 19 · original session: 25 messages
+folds in the handoff: 5 · earlier incident: 25 messages · tonight: 10 messages
 
 done. What happened:
-  1. An Antigravity CLI session was read from its SQLite store (never modified).
-  2. Local search proposed candidate chunks; the Jev API scored them; only the
-     ones above the retrieval threshold were kept.
-  3. The optimizer folded oversized tool output into stand-ins and dropped the
-     irrelevant tangent, to fit the token budget.
-  4. The result was written as a NEW Freebuff thread — with every chunk and
-     every stand-in naming the session and message it came from, so nothing is
-     unauditable.
+  1. Two Antigravity CLI sessions were read from their SQLite store (never
+     modified): the earlier incident, and tonight's repeat.
+  2. Tonight's session was excluded from its own retrieval, so the candidates
+     came only from the earlier incident. Local search proposed them; the Jev
+     API scored them; only the ones above the retrieval threshold were kept.
+  3. The optimizer cut the retrieved chunks to previews and stand-ins and
+     dropped the irrelevant tangent, to fit the token budget.
+  4. The result was written as a NEW Freebuff thread — every retrieved chunk
+     naming the session and message it came from in its header, so the handoff
+     is auditable back to the original (and the antigravity originals were
+     never modified: step 1 only read them).
 
 Hermetic run: delete everything with  rm -rf "demo/.state"
 ```
@@ -159,10 +194,32 @@ Hermetic run: delete everything with  rm -rf "demo/.state"
 
 | Line | Meaning |
 |---|---|
-| `retrieved 3 chunks (1 sessions searched)` | Local search proposed candidates from the sessions it indexed; Jev then scored them. Only chunks at or above the 0.5 relevance threshold are kept. |
-| `~558 tokens → Jev optimized ~558 tokens` | Estimated size (chars/4) of the kept set, before and after the keep/compress/drop pass. Nothing needed demoting inside the budget here. |
-| `jev: keep 4 · compress 0 · drop 0` | The optimizer's decisions. Retrieved chunks are user-role text, which is never dropped — compression is what the *handoff* exercises. |
-| `retrieved 7 historical context chunks` | The `continue` step retrieved for its own query, then prepended that context to the session being carried across. |
-| `of=33` | The Freebuff copy: 1 retrieved-context message + 7 chunks + the original 25. |
-| `19` stand-ins | How many oversized messages were folded instead of carried verbatim. |
-| `~1943 tokens` | What the single largest fold replaced — a `redis-cli CLIENT LIST` dump, cut down to one line that names where the original lives. |
+| `retrieved 3 chunks (2 sessions searched)` | Local search indexed both sessions and proposed candidates from each one; Jev then scored them, and only chunks at or above the 0.5 relevance threshold were kept — here all three came from the earlier incident. |
+| `~598 tokens → Jev optimized ~598 tokens` | Estimated size (chars/4) of the kept set, before and after the keep/compress/drop pass. Nothing needed demoting inside the wider Act 2 budget. |
+| `jev: keep 4 · compress 0 · drop 0` | The read-only stage's decisions: the query plus three chunks kept, nothing compressed at that budget. |
+| `retrieved 7 historical context chunks` | The `continue` step retrieved for its own query. The session being continued is excluded from its own retrieval, so all seven chunks came from the earlier incident. |
+| `of=18` | The Freebuff copy: 1 retrieved-context message + 7 chunks + tonight's 10 messages. |
+| `5` folds | How many oversized messages were cut to a preview plus a stand-in. Here all five are retrieved chunks: quoted history is assistant-role, so the budget is free to compress it. |
+| `~107 tokens` | What the largest single fold replaced. A chunk is one search hit's line, so chunk folds stay small; the 1,943-token `redis-cli CLIENT LIST` dump lives in the earlier incident and is folded only when *that* session is the one being continued. |
+| `antigravity:<session>#10` | Printed as `harness:session#message`. `view` takes the session and the message, so the script strips the harness prefix before opening it. |
+
+## Known issue this run exposes (fixed after this run)
+
+> **Update 2026-10-09:** `jev::apply_with` now stamps each fold with its real
+> `(session, message)` origin, so the pointers below resolve under `--retrieve`
+> too. This captured run predates the fix and has not been re-recorded.
+
+
+Every stand-in is stamped with the id of the session being written and the
+message's index *in that copy* (`apply` in `src/jev.rs`). That is the source
+session's own numbering only when nothing was prepended: with `--retrieve` the
+indices shift by the number of prepended chunks, and a chunk message has no
+original message at all — so the `view <session>#<n>` a stand-in prints for a
+folded chunk does not open what it replaced. The chunk's own header
+(`[retrieved n of m · source session#message]`) is the accurate provenance
+there, and this run's proof uses it.
+
+Measured the same day, with no retrieval prepended (`continue <earlier> --jev
+--budget 1200 --with freebuff`, zero Jev calls): the same pointers do resolve —
+`message 6 (~1943 tokens)` folded the earlier incident's `CLIENT LIST` dump and
+pointed at `969eb228…#7`, which is that dump.

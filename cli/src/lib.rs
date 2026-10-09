@@ -1311,6 +1311,26 @@ mod jev_continue_tests {
         assert!(reference.contains("session `jev-continue`"));
     }
 
+    /// Stand-ins in a retrieval-prepended copy name the stored sessions:
+    /// prepended messages their chunk's source, the continued session's own
+    /// messages their position before the prepend.
+    #[test]
+    fn prepended_origins_map_back_to_stored_sessions() {
+        let map = Prepended {
+            count: 2,
+            source_id: "current".into(),
+            origins: vec![
+                ("current".into(), 0),
+                ("earlier".into(), 7),
+                ("earlier".into(), 3),
+            ],
+        };
+        assert_eq!(map.origin(1), ("earlier".to_string(), 7));
+        assert_eq!(map.origin(2), ("earlier".to_string(), 3));
+        assert_eq!(map.origin(3), ("current".to_string(), 0));
+        assert_eq!(map.origin(9), ("current".to_string(), 6));
+    }
+
     /// Without `--jev`, `apply_jev` is a no-op: the copy passes through
     /// byte-identical.
     #[test]
@@ -1820,6 +1840,36 @@ type JevPlan = Option<Option<usize>>;
 /// least-over plan still beats no handoff, and the caller can re-run with a
 /// larger `--budget`.
 fn apply_jev(common: &mut Transcript<Common>, jev: JevPlan) -> Result<(), String> {
+    apply_jev_with(common, jev, None)
+}
+
+/// Where the messages of a retrieval-prepended copy really came from, so
+/// stand-ins point at sessions `view` can open instead of at the copy.
+struct Prepended {
+    count: usize,
+    source_id: String,
+    /// `(session, message)` per prepended message, in body order.
+    origins: Vec<(String, usize)>,
+}
+
+impl Prepended {
+    fn origin(&self, index: usize) -> (String, usize) {
+        match self.origins.get(index) {
+            Some(origin) => origin.clone(),
+            None => (
+                self.source_id.clone(),
+                index.saturating_sub(self.origins.len()),
+            ),
+        }
+    }
+}
+
+/// [`apply_jev`], with the origin map of a retrieval-prepended copy.
+fn apply_jev_with(
+    common: &mut Transcript<Common>,
+    jev: JevPlan,
+    prepended: Option<&Prepended>,
+) -> Result<(), String> {
     let Some(budget) = jev else {
         return Ok(());
     };
@@ -1836,7 +1886,11 @@ fn apply_jev(common: &mut Transcript<Common>, jev: JevPlan) -> Result<(), String
             report.selected_tokens,
         );
     }
-    let applied = jev::apply(common, &allocated).map_err(|e| e.to_string())?;
+    let applied = match prepended {
+        Some(map) => jev::apply_with(common, &allocated, &|index| map.origin(index)),
+        None => jev::apply(common, &allocated),
+    }
+    .map_err(|e| e.to_string())?;
     *common = applied;
     Ok(())
 }
@@ -1847,12 +1901,16 @@ fn apply_jev(common: &mut Transcript<Common>, jev: JevPlan) -> Result<(), String
 /// following `--jev` pass then optimizes session + retrieval together.
 /// Candidates are gathered locally, then ranked through the Jev API
 /// (`JEV_API_KEY`, or `TYPESAFE_API_KEY`). Returns how many chunks were prepended.
+///
+/// The session being continued is excluded from its own retrieval: its
+/// history is already in hand, so re-retrieving it would only duplicate it.
+/// What `--retrieve` is for is the *other* sessions' history.
 fn prepend_retrieved(
     common: &mut Transcript<Common>,
     query: &str,
     max_chunks: usize,
     max_tokens: Option<usize>,
-) -> Result<usize, String> {
+) -> Result<Prepended, String> {
     use contextleleo::jev_api::JevClient;
     use contextleleo::retrieval::{
         JEV_CANDIDATE_CHUNKS, RetrievalOptions, jev_filter, retrieve_local,
@@ -1862,11 +1920,13 @@ fn prepend_retrieved(
     // falling back to local scores.
     let client = JevClient::from_env().map_err(|e| e.to_string())?;
     let cwd = common.meta.cwd.clone();
+    let source_id = common.meta.id.clone();
     let options = RetrievalOptions {
         max_chunks,
         max_tokens,
         harnesses: None,
         cwd: cwd.clone(),
+        exclude_sessions: vec![source_id.clone()],
         ..RetrievalOptions::default()
     };
     // Gather a broad candidate set locally, then let the Jev API decide
@@ -1877,12 +1937,27 @@ fn prepend_retrieved(
         max_tokens: None,
         harnesses: None,
         cwd,
+        exclude_sessions: vec![source_id.clone()],
         ..RetrievalOptions::default()
     };
+    let none = || Prepended {
+        count: 0,
+        source_id: source_id.clone(),
+        origins: Vec::new(),
+    };
     let candidates = retrieve_local(query, &candidate_options).map_err(|e| e.to_string())?;
+    if candidates.is_empty() {
+        // Worth saying out loud: with one session on the machine, the
+        // exclusion above is the whole answer.
+        eprintln!(
+            "{} no other session matched — a session is not its own memory",
+            style::dim("note:", style::enabled_err()),
+        );
+        return Ok(none());
+    }
     let chunks = jev_filter(&client, query, candidates, &options).map_err(|e| e.to_string())?;
     if chunks.is_empty() {
-        return Ok(0);
+        return Ok(none());
     }
     let assembled = contextleleo::retrieval::assemble(&chunks, query);
     let count = chunks.len();
@@ -1891,7 +1966,14 @@ fn prepend_retrieved(
     let mut merged = assembled.body;
     merged.append(&mut common.body);
     common.body = merged;
-    Ok(count)
+    // Message 0 is the task ask; the chunk messages follow in assemble's order.
+    let mut origins = vec![(source_id.clone(), 0)];
+    origins.extend(contextleleo::retrieval::chunk_origins(&chunks));
+    Ok(Prepended {
+        count,
+        source_id,
+        origins,
+    })
 }
 
 /// The `context` command: retrieve → (optimize) → print.
@@ -2306,19 +2388,22 @@ fn continue_session(
         (None, true) => found.meta.id.clone(),
         (None, false) => {
             let mut common = found.read().map_err(|e| e.to_string())?;
+            let mut prepended = None;
             if let Some(task) = retrieve {
-                let n = prepend_retrieved(
+                let found_chunks = prepend_retrieved(
                     &mut common,
                     task,
                     contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
                     None,
                 )?;
+                let n = found_chunks.count;
+                prepended = Some(found_chunks);
                 println!(
                     "retrieved {n} historical context chunk{s}",
                     s = if n == 1 { "" } else { "s" }
                 );
             }
-            apply_jev(&mut common, jev)?;
+            apply_jev_with(&mut common, jev, prepended.as_ref())?;
             fresh_identity(&mut common, target, out);
             stamp_live_cwd(&mut common, out);
             write_and_report(found.harness, target, &common, out, metadata)?
@@ -2326,19 +2411,22 @@ fn continue_session(
         (Some(req), _) => {
             let common = found.read().map_err(|e| e.to_string())?;
             let mut copy = fragment::sliced(&common, req)?;
+            let mut prepended = None;
             if let Some(task) = retrieve {
-                let n = prepend_retrieved(
+                let found_chunks = prepend_retrieved(
                     &mut copy,
                     task,
                     contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
                     None,
                 )?;
+                let n = found_chunks.count;
+                prepended = Some(found_chunks);
                 println!(
                     "retrieved {n} historical context chunk{s}",
                     s = if n == 1 { "" } else { "s" }
                 );
             }
-            apply_jev(&mut copy, jev)?;
+            apply_jev_with(&mut copy, jev, prepended.as_ref())?;
             fresh_identity(&mut copy, target, out);
             stamp_live_cwd(&mut copy, out);
             write_and_report(found.harness, target, &copy, out, metadata)?
@@ -2365,19 +2453,22 @@ fn continue_loaded_remote(
         Some(request) => fragment::sliced(&common, request)?,
         None => common,
     };
+    let mut prepended = None;
     if let Some(task) = retrieve {
-        let n = prepend_retrieved(
+        let found_chunks = prepend_retrieved(
             &mut copy,
             task,
             contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
             None,
         )?;
+        let n = found_chunks.count;
+        prepended = Some(found_chunks);
         println!(
             "retrieved {n} historical context chunk{s}",
             s = if n == 1 { "" } else { "s" }
         );
     }
-    apply_jev(&mut copy, jev)?;
+    apply_jev_with(&mut copy, jev, prepended.as_ref())?;
     fresh_identity(&mut copy, target, out);
     stamp_live_cwd(&mut copy, out);
     let resume_id = write_and_report(source, target, &copy, out, metadata)?;

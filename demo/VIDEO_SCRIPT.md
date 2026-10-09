@@ -1,4 +1,4 @@
-# Video script — “Txcript searches. Jev decides.”
+# Video script — “contextleleo searches. Jev decides.”
 
 Target: **4:30**, one screen, terminal only (plus one optional app shot).
 Real output to point at: [transcript.md](transcript.md). Runner: `demo/run.sh`.
@@ -16,10 +16,11 @@ Real output to point at: [transcript.md](transcript.md). Runner: `demo/run.sh`.
 5. The two Jev calls take ~1s each; that is the only real-time latency. Keep the
    prompts simple: two retrieval calls per run.
 
-**Numbers to say out loud (all real, all on screen):** 25-message Antigravity
-session ≈ 4.2k tokens · 3 chunks kept out of 3 proposed, relevances 0.95 / 0.97 /
-0.97 · 7 chunks retrieved for the handoff · 33-message Freebuff copy · 19
-stand-ins · the largest stand-in replaces ~1,943 tokens.
+**Numbers to say out loud (all real, all on screen):** two Antigravity sessions —
+25 messages of the earlier incident, 10 of tonight's repeat · **2 sessions
+searched** · 3 chunks kept, relevances 0.94 / 0.97 / 0.97, all three from the
+earlier incident · 7 chunks retrieved for the handoff · 18-message Freebuff copy ·
+5 folds, the largest replacing ~107 tokens.
 
 ---
 
@@ -37,17 +38,19 @@ Caption: **Your context shouldn't be trapped in one agent's session store.**
 
 Caption: **Retrieval finds. Jev decides. The optimizer compresses.**
 
-## 0:20 — Act 1 · the session that already exists
+## 0:20 — Act 1 · the sessions that already exist
 
-Type `./demo/run.sh --reset` and let Act 1 run. Stop talking while the seed is
+Type `./demo/run.sh --reset` and let Act 1 run. Stop talking while the seeds are
 written.
 
-> “Act one is what you never do on camera: I’m not pasting anything. There’s a
-> real session in Antigravity CLI's SQLite store — twenty-five messages of a
-> production incident: redis-cli dumps, a couple of red herrings, the root cause
-> and the fix.”
+> “Act one is what you never do on camera: I’m not pasting anything. Two real
+> sessions go into Antigravity CLI's SQLite store. The first is an incident from
+> a couple of weeks ago — redis-cli dumps, a couple of red herrings, the root
+> cause and the fix. The second is tonight: the same p99 spike on checkout-api,
+> and no idea yet why.”
 
-Point at the `list` row and at `antigravity session: … · 25 messages`.
+Point at the two `list` rows and at
+`earlier incident: … · 25 messages` / `tonight's session: … · 10 messages`.
 
 Caption: **Real `conversations/*.db`. No export, no copy-paste.**
 
@@ -56,13 +59,15 @@ Caption: **Real `conversations/*.db`. No export, no copy-paste.**
 Act 2 runs automatically; slow down and point as the lines appear.
 
 > “Now the interesting part. I ask for history with a task description. Local
-> search proposes candidates — cheap, local, no vector database, no network. Then
-> the Jev API scores each one against *this* task.”
+> search proposes candidates from both sessions — cheap, local, no vector
+> database, no network. Then the Jev API scores each one against *this* task.”
 
 Point at, in order:
 
-- `context: retrieved 3 chunks (1 sessions searched) → ~558 tokens`
-- the three `[retrieved n of 3 · source antigravity:…#10 · relevance 0.95]` lines
+- `context: retrieved 3 chunks (2 sessions searched) → ~598 tokens`
+- the three `[retrieved n of 3 · source antigravity:…#10 · relevance 0.94]` lines
+  — “and notice which session answered: all three come from the earlier
+  incident, because that is where the answer lives.”
 - the third chunk, the single-line structured log — “this is one *line* of a
   real log, and it is a chunk; that's why the token math matters.”
 
@@ -77,9 +82,16 @@ Caption: **Every chunk is traceable: `harness:session#message`.**
 Act 3 runs. Point at the command line as it appears (it is long — that is the
 point) and then at the two result lines.
 
-> “This is the whole cross-tool story in one command: continue that Antigravity
-> session, *retrieve* relevant history for the task, *plan* the handoff with Jev
-> to a 1,200-token budget — and write it as a Freebuff thread.”
+> “This is the whole cross-tool story in one command: continue *tonight's*
+> session, retrieve relevant history for the task, plan the handoff with Jev to a
+> 1,200-token budget — and write it into Freebuff.”
+
+The line to land is the one the script prints as it starts:
+
+> “A session is not its own memory. Tonight's session is excluded from its own
+> retrieval, so everything Jev considers comes from the *other* sessions — the
+> earlier incident's root cause and fix, not a copy of the messages already on
+> this session's screen.”
 
 Point at `retrieved 7 historical context chunks` and
 `antigravity → freebuff  demo/.state/freebuff-projects`.
@@ -88,25 +100,30 @@ Caption: **retrieve → optimize → write into the other harness's own format.*
 
 ## 2:30 — Act 4 · proof
 
-Three things to point at, in order:
+Four things to point at, in order:
 
 1. `list --from freebuff` — “a brand-new Freebuff thread, in Freebuff's store.”
 2. `view <id>#1-6` — the retrieved head: **“the new session starts with exactly
    the context Jev decided mattered, each chunk stamped with its source and its
-   relevance.”** And `of=33`: 1 request + 7 chunks + the original 25.
-3. The folded dump — `view <id>#15`:
+   relevance.”** And `of=18`: 1 request + 7 chunks + tonight's own 10.
+3. `retrieved from antigravity:<earlier id> — the earlier incident, never the
+   session being continued` — “that line is not narration; the script checks it
+   and fails the run if a single chunk came from the session being continued.”
 
-> “And here's the compression. This was a thousand-connection `CLIENT LIST`
-> dump — nineteen hundred tokens. It is now one line that tells the next agent
-> what it needs and exactly where the original lives: session, message fourteen.
-> Nineteen stand-ins like this in one handoff.”
+   > “This is the demo's own regression test. If the exclusion ever breaks, this
+   > run goes red instead of quietly handing you your own messages back.”
+4. The compressed chunk — `view <id>#5`:
 
-4. Finish on the untouched original: `view <agy-id>#10 --from antigravity`.
+> “And here's the compression. The retrieved chunks are cut to a preview plus a
+> stand-in that carries the size of what it replaced — that is how the handoff
+> fits a 1,200-token budget while keeping seven findings from another session.”
 
-> “The source session is byte-for-byte what it was. We never edit history — we
-> quote it.”
+5. Finish on the untouched original: `view <earlier-id>#10 --from antigravity`.
 
-Caption: **19 stand-ins · ~1,943 tokens folded into one line · source untouched.**
+> “The source session is exactly what it was. We never edit history — we quote
+> it.”
+
+Caption: **7 chunks from another session · 5 folds · both originals untouched.**
 
 ## 4:00 — Close
 
@@ -123,15 +140,31 @@ Caption: **github.com/Adityakk9031/contextleleo · `./demo/run.sh`**
 
 - `./demo/run.sh --live` once. It prints the Antigravity store this machine
   actually has — `~/.gemini/antigravity` for the desktop app,
-  `~/.gemini/antigravity-cli` for the standalone CLI — and writes the seeded
-  session into that one. Recorded after the run, not during it: the app
+  `~/.gemini/antigravity-cli` for the standalone CLI — and writes both seeded
+  sessions into that one. Recorded after the run, not during it: the app
   indexes sessions only when it launches, so open (or relaunch) the desktop app
-  and show the seeded session in its list; if the standalone CLI is installed
-  too, `agy --conversation=<seeded id>` works as well.
+  and show the two seeded sessions in its list; if the standalone CLI is
+  installed too, `agy --conversation=<seeded id>` works as well.
 - Open the Freebuff app and show the handoff thread in the sidebar — the same
   session the terminal wrote. Its bundle has no directory watcher either, so
   open it after the run.
 - Cut between the two apps on the beat “same context, two tools”.
+
+## Optional extra beat: a big fold (zero Jev calls)
+
+The biggest fold in the *retrieval* handoff is small because a chunk is one
+search-hit line. If a large fold makes a better shot, continue the earlier
+incident itself — with no retrieval, so it costs no Jev calls — and the
+1,943-token `CLIENT LIST` dump gets folded:
+
+```sh
+./target/release/contextleleo continue <earlier-id> --jev --budget 1200 \
+  --with freebuff --no-resume
+```
+
+That prints stand-ins for the session's own oversized messages, including
+`~1943 tokens`, and — because nothing was prepended — its `view` pointer
+resolves to the real original (`<earlier-id>#7`).
 
 ## Editing notes
 
@@ -142,6 +175,10 @@ Caption: **github.com/Adityakk9031/contextleleo · `./demo/run.sh`**
   values — the point of the demo is that they are measured.
 - If a run prints different UUIDs or timings, that is expected: ids, timings and
   token estimates change per run. Scores land in the same ranges.
+- Stand-in pointers were fixed after this script was recorded (they now name the
+  stored source session, also under `--retrieve`), but the captured run predates
+  the fix. Before clicking one on camera, re-run the demo and open it once
+  yourself; the chunk header above each stand-in is the always-accurate provenance.
 - Chapter titles for YouTube: `0:00 context dies when you switch tools` ·
-  `0:20 the session already on disk` · `0:45 retrieval ranked by Jev` ·
+  `0:20 the sessions already on disk` · `0:45 retrieval ranked by Jev` ·
   `1:45 the one-command handoff` · `2:30 the compressed thread` · `4:00 close`.

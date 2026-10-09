@@ -62,8 +62,8 @@ RetrievedHandoff { chunks, assembled, optimized, report,
 ## 3. Naming + constraints (memorize before touching anything)
 
 - **`session#message`** locator format, 1-based (`freebuff:e2748cef-…#8`), produced by `SourceReference::locator()`, honored downstream by `view`/`fragment`.
-- **Read-only retrieval.** No vector DB, no embeddings, no network calls in today's retrieval path; deterministic local ranking only. A semantic/embedding retriever can later implement `ContextRetriever` and drop in without touching the engine, the CLI, or the optimizer.
-- **`jev` and the transcript model are frozen** for this feature — the user's hard rule was: do NOT rebuild Jev or the transcript model; retrieval composes with them as they are.
+- **Read-only retrieval.** No vector DB, no embeddings, no network calls **in the retrieval stage itself**; deterministic local ranking only. The separate Jev ranking stage (§18) is the one network path, and it is opt-in (`context`, `--retrieve`). A semantic/embedding retriever can later implement `ContextRetriever` and drop in without touching the engine, the CLI, or the optimizer.
+- **`jev` and the transcript model are frozen** for this feature — the user's hard rule was: do NOT rebuild Jev or the transcript model; retrieval composes with them as they are. "Frozen" means *not rewritten*: retrieval ranks through the existing optimizer and transcripts, and does not re-shape either.
 - **Budgets:** `--budget` counts estimated tokens (chars/4), not characters; `RetrievalOptions.max_tokens` ***pre-gates* chunk selection** *before* Jev; using either or both is fine.
 - **`min_relevance`** (default `0.15` = `MIN_RELEVANCE`) drops chunks whose ranker score did not reach the noise floor; a single stray keyword hit scores under it. Set `min_relevance: 0.0` in tests to inspect raw ranked order.
 - **Original user hard rules (all honored):** retrieval must be read-only over stored sessions · must preserve `session#message` source references · must be budget-aware · must be optional (existing `continue`/`query`/export workflows behave exactly as before; `--retrieve`/`context` are purely additive) · no vector DB · no Jev or transcript-model rebuild.
@@ -195,9 +195,9 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 548 passing, 0 failing (this is the verified state)
+## 9. Tests — 564 passing, 0 failing (this is the verified state)
 
-**Command:** `cargo test --workspace --all-features` → exit 0. Tallies of the 8 result lines: **548 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage and §19 demo kit grew the suite, latest full run 2026-10-08). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
+**Command:** `cargo test --workspace --all-features` → exit 0. Tallies of the 8 result lines: **564 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit, and the §19 exclusion/redaction tests grew it, latest full run 2026-10-08). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
 `tests/integration/retrieval.rs` holds **12 `#[test]` fns** (registered in `tests/integration/main.rs` as `mod retrieval;`):
 
@@ -250,7 +250,7 @@ The test file grew from its earlier 468-line draft to 560 lines as the pipeline 
 
 | Check | Result |
 |---|---|
-| `cargo test --workspace --all-features` | exit 0 — **548 passed; 0 failed; 1 ignored** (latest full run, 2026-10-08; was 530 here — the §18/§19 additions grew it) |
+| `cargo test --workspace --all-features` | exit 0 — **564 passed; 0 failed; 1 ignored** (latest full run, 2026-10-08; was 530 here — the §18/§19 additions and the exclusion/redaction tests grew it) |
 | `cargo check --no-default-features` | exit 0 (lib + CLI compile without default features) |
 | `cargo fmt --all -- --check` | **exit 0 after `cargo fmt --all` was applied** (the run immediately preceding this doc reformatted retrieval sources; see "Formatting cleanup" below) |
 | `cargo clippy --workspace --all-features` | **exit 0 — 0 warnings, 0 errors** (cleaned earlier this pass; see below) |
@@ -302,7 +302,7 @@ Nothing above is speculative — each item is a real gap that needs real work, r
 
 ### 12.5 Freebuff adapter leftovers (§1 stream 3)
 
-- `src/harness/freebuff.rs` and `tests/integration/freebuff.rs` are done and green (the full suite is 548 passed — §19), and `README.md`'s Supported-agents table row `| [Freebuff](docs/formats/freebuff.md) | freebuff | Yes | Yes (opens the app) |` is in place (README line ~122).
+- `src/harness/freebuff.rs` and `tests/integration/freebuff.rs` are done and green (the full suite is 564 passed — §19), and `README.md`'s Supported-agents table row `| [Freebuff](docs/formats/freebuff.md) | freebuff | Yes | Yes (opens the app) |` is in place (README line ~122).
 - Left open from that stream: nothing — the CHANGELOG entry (§12 item 4), `docs/formats/freebuff.md` (verified present, §12 item 3) and the `--pedantic` sweep (§12 item 2) all landed; newer work is §18 (Jev) and §19 (demo kit).
 
 ## 13. Environment + runbook
@@ -311,7 +311,7 @@ Nothing above is speculative — each item is a real gap that needs real work, r
 - Repo root is the lib crate; `cli/` is the CLI. Common commands:
   ```sh
   source "$HOME/.cargo/env"
-  cargo test --workspace --all-features     # 548 pass, ~25–40 s machine-dependent
+  cargo test --workspace --all-features     # 564 pass, ~25–40 s machine-dependent
   cargo test --workspace --all-features retrieval::   # just the retrieval tests
   cargo run -p contextleleo-cli -- context "query" --max-chunks 3
   cargo run -p contextleleo-cli -- continue <id> --jev --retrieve "task" --no-resume
@@ -381,7 +381,7 @@ Listed as a straight-up list, each a concise trap:
 
 ## 16. One-paragraph resume-for-a-new-agent
 
-> contextleleo is a transcript-conversion lib+CLI (Rust, `txcript-main` checkout, not a git repo). This session added a read-only Context Retrieval layer (`src/retrieval.rs`, `search`-feature-gated): `ContextRetriever` trait + deterministic `IndexRetriever` (per-term OR fuzzy prefilter over `src/search.rs`'s index, literal term-overlap + file/symbol/error/tool/recency scoring, `Origin.Meta` filtered), chunk assembly into a provenance-tagged `Transcript<Common>`, and a pipeline into the pre-existing Jev optimizer (`plan_with → allocate → apply`, relevance-weighted via `RelevanceScorer`, `RetrievedHandoff` result). CLI got `context …` (index → retrieve → optimise → print, `--budget/--max-chunks/--max-tokens/--from/--cwd/--quiet/--cache`) and `continue --retrieve QUERY` (requires `--jev`, prepends assembled context pre-optimization, refused for document sources). 530 workspace tests pass with 0 failures (12 new retrieval integration tests, incl. budget shed and source-immutability); `cargo check --no-default-features` passes; formatting was applied once and verified; 17 clippy warnings remain (9 fixable in retrieval, ~4–5 in the CLI, 1 pre-existing in `pi.rs:711`). Docs/CHANGELOG do not yet mention the new commands (§12). Retrieval is read-only over stored sessions, every chunk traceable to `session#message`, budget via `RetrievalOptions.max_tokens` pre-gate + Jev `--budget`.
+> contextleleo is a transcript-conversion lib+CLI in Rust (checkout folder `txcript-main`; the product name is `contextleleo` everywhere; git repo `github.com/Adityakk9031/contextleleo`, branch `main`, v0.14.4). It reads and writes 18 agents' real session stores (`src/harness/*.rs`, one adapter per agent). On top of that sits a read-only Context Retrieval layer (`src/retrieval.rs`, `search`-feature-gated): the `ContextRetriever` trait + deterministic `IndexRetriever` (per-term OR fuzzy prefilter over `src/search.rs`'s index, literal term-overlap + file/symbol/error/tool/recency scoring, `Origin.Meta` filtered), chunk assembly into a provenance-tagged `Transcript<Common>`, and a pipeline into the pre-existing Jev optimizer (`plan_with → allocate → apply`, relevance-weighted via `RelevanceScorer`, `RetrievedHandoff` result) — plus the Jev ranking stage (`src/jev_api.rs`, §18) that asks the external TypeSafe System One model which candidate chunks matter, and the demo kit (`demo/*`, §19). CLI: `list`, `view`, `query`, `export`, `context`, and `continue` with `--retrieve`/`--jev`. **564** workspace tests pass with 0 failures; `cargo fmt` and both clippy invocations (all-features/all-targets, lib no-default-features) are clean; the release binary builds `--locked`. Retrieval is read-only over stored sessions, every chunk traceable to `session#message`, budgets via `RetrievalOptions.max_tokens` pre-gate plus Jev `--budget`; `--retrieve` excludes the session being continued (`exclude_sessions`), and candidate excerpts are credential-redacted and fenced as quoted data before they leave the machine. Stand-in `view` pointers name the stored source under `--retrieve` too (`jev::apply_with` + an origin map, §19); the Jev client retries transient failures (429/5xx/transport, 4 attempts, backoff).
 
 ## 17. Cross-references
 
@@ -487,17 +487,19 @@ rollback line.
 ## 19. Demo kit — Antigravity CLI → Jev → Freebuff (2026-10-08)
 
 **Why:** the pipeline needed to be *showable* to a customer and recordable, not just unit-tested. The
-demo tells one story in one screen: a real incident session left behind by Antigravity CLI is
-retrieved from, ranked by Jev, compressed to a budget, and written into Freebuff's own store as a new
-thread. “Txcript searches. Jev decides.”
+demo tells one story in one screen: two real sessions left behind by Antigravity CLI — tonight's
+investigation, and the earlier incident that already found the cause — are read from, ranked by Jev,
+compressed to a budget, and written into Freebuff's own store as a new thread. “contextleleo searches.
+Jev decides.”
 
 **Layout (`demo/`):**
 
 | Path | Role |
 |---|---|
-| `run.sh` | 4-act runner: seed the agy session → `context` (read-only retrieval) → `continue --retrieve --jev --with freebuff` → `list`/`view` proof. `--live` writes into the real stores; `--reset` wipes state |
-| `seed/antigravity-checkout-incident.json` | the sample session, as a **Simple** interchange document (24 messages, ~4.2k tokens): `redis-cli` dumps, a 1.9k-token `CLIENT LIST` dump, a single-line 1.5k-char structured log, a decisive root-cause line, an unrelated Safari-CSS tangent |
-| `transcript.md` | the **real** captured output of one run + a glossary of every number |
+| `run.sh` | 4-act runner: seed **both** agy sessions → `context` (read-only retrieval over both) → `continue <tonight> --retrieve --jev --with freebuff` (tonight's session is excluded from its own retrieval) → `list`/`view` proof that also **asserts** every retrieved source is the earlier incident. `--live` writes into the real stores; `--reset` wipes state |
+| `seed/antigravity-checkout-incident.json` | the earlier incident, as a **Simple** interchange document (24 messages, 25 as the store renders them, ~4.2k tokens): `redis-cli` dumps, a 1.9k-token `CLIENT LIST` dump, a single-line 1.5k-char structured log, a decisive root-cause line, an unrelated Safari-CSS tangent |
+| `seed/antigravity-checkout-recurrence.json` | tonight's repeat (10 messages): the same p99 symptom, a deploy-history red herring, and **no answer** — the answer is what the earlier session has, which is the whole point of retrieving it |
+| `transcript.md` | the **real** captured output of one run + a glossary of every number + the stand-in-pointer caveat this rebuild exposed |
 | `VIDEO_SCRIPT.md` | shot-by-shot script: pre-flight, timecoded narration, on-screen captions, the numbers to point at, B-roll, editing notes |
 | `README.md` | customer-facing: what it proves, run modes, what is real vs scripted, troubleshooting |
 
@@ -575,11 +577,12 @@ Against a bare root the same write prints no note; `bash -n demo/run.sh` 0, and 
 **Verification after these edits:** `cargo fmt --all --check` exit 0;
 `RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --all-features` exit 0;
 `cargo clippy -p contextleleo --lib --no-default-features` exit 0;
-`cargo test --workspace --all-features` → **548 passed / 0 failed**; `cargo build --release --locked
+`cargo test --workspace --all-features` → **548 passed / 0 failed** (that run; the suite is 564 as of
+the 2026-10-08 rebuild paragraph at the end of this section); `cargo build --release --locked
 -p contextleleo-cli` exit 0; `./demo/run.sh --reset` → exit 0 end to end against the real Jev API.
 
 **Verification of the root probe** (re-run after that change, `--locked` release): fmt 0, clippy 0,
-build 0, **548 passed / 0 failed**; `bash -n demo/run.sh` 0; default root, no override →
+build 0, **548 passed / 0 failed** (that run — 564 now); `bash -n demo/run.sh` 0; default root, no override →
 `list --from antigravity` prints this machine's 15 real app sessions; `CONTEXTLELEO_ANTIGRAVITY_ROOT=/tmp/ct-no-such-root`
 → “no local antigravity sessions found” (override still wins, the real store is not silently read);
 the `--live` probe resolves to `~/.gemini/antigravity`; `list --from freebuff` prints the 3 real app
@@ -588,7 +591,7 @@ running — its store is read at launch and its local API needs the app's own au
 checked only from the CLI side. (The same question for Antigravity is now measured: indexed on the
 next launch, ignored while running — see the paragraph above.)
 
-**Demo readiness (re-rehearsed 2026-10-08, the recording day):** a fresh `./demo/run.sh --reset` ran
+**Demo readiness (re-rehearsed 2026-10-08, the recording day — the *pre-rebuild* single-session demo; the two-session rebuild below supersedes its numbers):** a fresh `./demo/run.sh --reset` ran
 end to end with **exit 0** against the real Jev API — Act 2 `~558 tokens`, relevances 0.95/0.97/0.97,
 `keep 4 · compress 0 · drop 0`; Act 3 retrieved **6** context chunks, so that run's copy is `of=32`.
 Repeated runs vary by a chunk or two (**6–7** chunks, `of=32`–`33`) because the kept set depends on
@@ -598,4 +601,15 @@ present; `demo/.state/` matches `.gitignore` line 9; `list --from antigravity` r
 real sessions and `list --from freebuff` its 3 threads; neither desktop app was running, which suits
 the recording order — run `--live` first, then open both apps so they index the new sessions at
 launch. `agy` is not on this machine's PATH, so the desktop app is the B-roll resume surface.
-Everything in §18 and §19 is committed (2026-10-08) — see `git log` for the demo-kit commit.
+**Two-session rebuild + the retrieval exclusion (2026-10-08, after a third-party code review of the brief and the code).** The review confirmed the stage's biggest hole: `continue --retrieve` searched the session being continued, so the demo only worked because it had a single session. Fixed, tested, and the demo now shows the real pitch:
+
+- **Exclusion.** `RetrievalOptions` gained `exclude_sessions: Vec<String>`; `retrieve_local` skips those sessions before parsing and `IndexRetriever::retrieve` skips them before ranking, so an excluded session reaches no signal at all. `prepend_retrieved` (CLI) sets it to `common.meta.id` — a session is not its own memory — and prints a `note:` when nothing else matched. `candidate_options` spreads `..options.clone()`, so the exclusion survives the widening pass.
+- **Jev prompt hardening.** `build_state` now fences each excerpt (`<<<BEGIN/END QUOTED CHUNK>>>`), says in words that the fenced text is DATA to judge and never instructions to follow, repeats that in every `noul` question, flattens locators to one line, and strips any copy of the fence markers out of untrusted text so a chunk cannot close its own quote. `redact` scrubs credential shapes (`sk-`, `AKIA`, `ghp_`, `xoxb-`, `AIza`, JWTs, PEM blocks, `Bearer …`, and any value assigned to `api_key`/`password`/`token`/`client_secret`/…) from the copy that goes to Jev **only** — local history keeps the real value. Hand-rolled (no regex dependency), and it errs toward replacing.
+- **Quoted history is no longer a user turn.** `assemble` emits `Role::Assistant` per chunk and stamps `QUOTED_HISTORY_NOTE` under the provenance header; the transcript's one user turn is the task. Two consequences: retrieved chunks became compressible (user text is protected from the demotion ladder by `has_user_text`), and `objective_index` still finds the task first.
+- **The demo.** A second seed (`demo/seed/antigravity-checkout-recurrence.json` — tonight's repeat, 10 messages, deliberately no answer) is the session being continued, while the earlier 25-message incident supplies the context. `run.sh` captures both ids explicitly, strips the harness prefix before `view` (the printed locator is `harness:session#message`; `view` takes `session#message`), and **asserts** the claim rather than narrating it: the run fails if any retrieved source is the session being continued, or if none came from the earlier incident. Rehearsed 2026-10-08: exit 0, Act 2 `retrieved 3 chunks (2 sessions searched) → ~598 tokens`, relevances 0.94/0.97/0.97, Act 3 `retrieved 7 historical context chunks` all from the earlier incident, copy `of=18`, 5 folds, largest ~107 tokens. `demo/transcript.md` is that run.
+- **Suite:** the change added 7 tests (exclusion in ranking, redaction shapes and non-matches, fence/instruction wording, fence-neutralising, locator flattening, chunk role) — 564 passed / 0 failed.
+
+**Found while rebuilding the demo, since FIXED (2026-10-09): stand-in `view` pointers were wrong under `--retrieve`.** `apply` stamped every fold with `transcript.meta.id` plus the message's index *in the copy being optimized* (`compress_message`), which is the source session's numbering only when nothing was prepended. Measured on 2026-10-08: without retrieval the fold of the 1,943-token `CLIENT LIST` dump pointed at `#7`, which is that dump; with retrieval the folds named the continuation id and an index shifted by the prepended chunks. Fix: `jev::apply_with(transcript, plan, origin)` takes a per-message `(session, index)` origin (`apply` is now `apply_with` with the copy's own id/index, behaviour unchanged). `retrieval::chunk_origins` gives the stored `(session, message)` behind each assembled chunk; the CLI's `Prepended` map points chunk messages at their source and the continued session's own messages at `index - prepended` (`apply_jev_with`); the read-only `context` path does the same through `retrieve_and_optimize`. Tests: `apply_with_points_stand_ins_at_the_supplied_origin`, `prepended_origins_map_back_to_stored_sessions`. **Not yet re-measured in a live demo run** (billed Jev calls) — `demo/transcript.md` still records the pre-fix run; a `--span` range crop before `--retrieve` still offsets continued-session indices (pre-existing, unchanged).
+**Also shipped 2026-10-09:** Jev client retry — up to 4 attempts on 429/500/502/503/504 and transport errors, 250 ms/500 ms/1 s backoff (a 429 `Retry-After` in whole seconds replaces it, capped at 5 s), other 4xx fail immediately, final error says `after 4 attempts`; the sleeper is injectable so tests do not sleep (+7 tests).
+
+Everything in §18 and §19 above was committed at `fd3f109` (plus the project brief at `25233d2`); the two-session rebuild and the exclusion/redaction change described in this paragraph are working-tree changes, not committed at the time of writing.

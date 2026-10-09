@@ -8,7 +8,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use contextleleo::common::{Block, Message, Meta, Role, Tool, ToolOutput};
 use contextleleo::harness::simple::Simple;
 use contextleleo::retrieval::{
-    ContextRetriever, IndexRetriever, RetrievalOptions, Signal, assemble,
+    ContextRetriever, IndexRetriever, QUOTED_HISTORY_NOTE, RetrievalOptions, Signal, assemble,
     retrieve_and_optimize_default,
 };
 use contextleleo::search::{DocKey, Index};
@@ -148,6 +148,46 @@ fn relevant_session_ranks_above_irrelevant() {
         hits.iter()
             .map(|h| h.source.session.id.clone())
             .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn an_excluded_session_is_not_its_own_memory() {
+    // Two incidents, both about redis: the one being continued, and the
+    // earlier one whose findings the handoff actually needs.
+    let continued = redis_session("being-continued", 1, true);
+    let earlier = redis_session("earlier-incident", 20, true);
+    let index = index_of(&[continued, earlier]);
+    let query = "redis maxConnections timeout — what did we change?";
+
+    // With nothing excluded, both sessions are candidates...
+    let both = retrieve(&index, query, &RetrievalOptions::default());
+    let ids: Vec<String> = both
+        .iter()
+        .map(|hit| hit.source.session.id.clone())
+        .collect();
+    assert!(ids.iter().any(|id| id == "being-continued"), "{ids:?}");
+    assert!(ids.iter().any(|id| id == "earlier-incident"), "{ids:?}");
+
+    // ...and excluding the session being continued leaves the earlier
+    // incident as the only source: the engine never ranks the session as a
+    // source of its own memory.
+    let others = retrieve(
+        &index,
+        query,
+        &RetrievalOptions {
+            exclude_sessions: vec!["being-continued".to_string()],
+            ..RetrievalOptions::default()
+        },
+    );
+    let ids: Vec<String> = others
+        .iter()
+        .map(|hit| hit.source.session.id.clone())
+        .collect();
+    assert!(!ids.is_empty(), "the earlier incident still ranks");
+    assert!(
+        ids.iter().all(|id| id.as_str() == "earlier-incident"),
+        "{ids:?}"
     );
 }
 
@@ -320,6 +360,14 @@ fn assembly_is_traceable_and_carries_the_query() {
         "source locator present"
     );
     assert!(text.contains("maxConnections was increased from 20 to 100."));
+    assert!(
+        text.contains(QUOTED_HISTORY_NOTE),
+        "quoted history says so: {text}"
+    );
+    // Retrieved history is reference material, not the recipient user
+    // speaking: the task is the transcript's one user turn.
+    assert_eq!(assembled.body[0].role, Role::User);
+    assert_eq!(assembled.body[1].role, Role::Assistant);
     assert!(
         assembled.body[0].content[0]
             .block_text()

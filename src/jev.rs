@@ -761,6 +761,24 @@ pub fn apply(
     transcript: &Transcript<Common>,
     plan: &ContextPlan,
 ) -> std::result::Result<Transcript<Common>, ApplyError> {
+    apply_with(transcript, plan, &|index| {
+        (transcript.meta.id.clone(), index)
+    })
+}
+
+/// [`apply`] with an explicit origin for every stand-in: `origin(i)` names the
+/// `(session id, message index)` that message `i` of `transcript` really came
+/// from. A transcript that was assembled from several sources — retrieved
+/// chunks prepended to a continued session — is not its own origin, so its
+/// stand-ins must point at the stored sessions `view` can open.
+///
+/// # Errors
+/// Same as [`apply`].
+pub fn apply_with(
+    transcript: &Transcript<Common>,
+    plan: &ContextPlan,
+    origin: &dyn Fn(usize) -> (String, usize),
+) -> std::result::Result<Transcript<Common>, ApplyError> {
     if plan.items.len() != transcript.body.len() {
         return Err(ApplyError::PlanMismatch {
             plan_items: plan.items.len(),
@@ -777,7 +795,8 @@ pub fn apply(
                 .iter()
                 .filter(|prior| prior.decision != ContextDecision::Drop)
                 .count();
-            compress_message(&mut copy.body[applied_index], index, &transcript.meta.id);
+            let (session, source_index) = origin(index);
+            compress_message(&mut copy.body[applied_index], source_index, &session);
         }
     }
     Ok(copy)
@@ -1868,6 +1887,32 @@ mod tests {
         };
         // 1-based, matching `view <session>#<n>` message numbering.
         assert!(reference.contains("jev-test#3"));
+    }
+
+    /// A transcript assembled from other sessions is not its own origin:
+    /// `apply_with` points each stand-in at the caller's source, not at the
+    /// copy's id or position.
+    #[test]
+    fn apply_with_points_stand_ins_at_the_supplied_origin() {
+        let (call, result) = tool_pair("t1", "cargo test", &"out\n".repeat(1500));
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            call,
+            result,
+        ]);
+        let plan = plan(&source, None);
+
+        let applied = apply_with(&source, &plan, &|index| {
+            ("earlier-session".to_string(), index + 40)
+        })
+        .unwrap();
+
+        let Block::Text { text: reference } = &applied.body[2].content[1] else {
+            panic!("expected the reference block");
+        };
+        assert!(reference.contains("session `earlier-session` message 42"));
+        assert!(reference.contains("view earlier-session#43"));
+        assert!(!reference.contains("jev-test"));
     }
 
     /// A `Compress` item between two `Drop`s must still be rewritten at the

@@ -1,0 +1,136 @@
+{
+  "id": "checkout-recurrence-01",
+  "timestamp": "2026-10-08T02:20:00Z",
+  "cwd": "__DEMO_CWD__",
+  "git_branch": "investigate/p99-recurrence",
+  "title": "checkout-api p99 spike, again — night of 2026-10-08",
+  "cli_version": "agy 0.9.4",
+  "model": "claude-opus-5",
+  "messages": [
+    {
+      "role": "user",
+      "content": "checkout-api p99 is climbing again: 3.4s at the 99th percentile on POST /checkout since 02:05 UTC, and the first 504s are arriving. Same shape as the incident a couple of weeks ago — pods idle, redis unhappy, nightly reconciliation window. What did we actually change last time, and is that fix still holding?"
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "text": "Same symptom shape as last time, so start from the same two places: the API pods, then Redis."
+        },
+        {
+          "type": "text",
+          "text": "Starting where the earlier incident started: are the API pods saturated this time?"
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "id": "t1",
+          "input": {
+            "command": "kubectl -n checkout top pods --sort-by=cpu"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "t1",
+          "content": "NAME                            CPU(cores)   MEMORY(bytes)\ncheckout-api-5f7b9c6d4-2xk9p  183m         418Mi\ncheckout-api-5f7b9c6d4-8pq4z  188m         411Mi\ncheckout-api-5f7b9c6d4-lm52t  176m         407Mi\ncheckout-worker-6c8d5e7f9-x2v7  61m          190Mi\ncheckout-worker-6c8d5e7f9-t9q1  58m          193Mi"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Pods idling at ~180m again, exactly like the last incident — the stall is upstream of the process, so the deploy is not the story. Confirming the deploy anyway before I go further, because \"it started at 02:05\" invites that assumption."
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "id": "t2",
+          "input": {
+            "command": "kubectl -n checkout rollout history deploy/checkout-api | tail -3"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "t2",
+          "content": "deployment.apps/checkout-api\nREVISION  CHANGE-CAUSE\n41        <none>          (6d ago)\n40        <none>          (19d ago)"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Nothing shipped in six days, so the 02:05 start has to come from the workload, not the code. Redis client counts are the obvious next check."
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "id": "t3",
+          "input": {
+            "command": "redis-cli -h redis-prod.internal INFO clients"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "t3",
+          "content": "# Clients\nconnected_clients:2048\ncluster_connections:0\nmaxclients:2048\nclient_recent_max_input_buffer:20480\nblocked_clients:1187\ntracking_clients:0\npubsub_clients:0\nwatching_clients:0\nclients_in_timeout_table:0\ntotal_blocking_keys:9\ntotal_blocking_keys_on_nokey:0\nclient_io_threads:0\ncurrent_client_thread:0\ntotal_watched_keys:0"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "connected_clients is pinned at 2048 against a maxclients of 2048, and 1187 of them are blocked. That looks like the ceiling we raised at the end of the last incident — so the change bought headroom and something has refilled it. I do not remember the reconciler details from that session well enough to guess at which pool is leaking again."
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "id": "t4",
+          "input": {
+            "command": "redis-cli -h redis-prod.internal CLIENT LIST | head -6"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "t4",
+          "content": "id=48213 addr=10.4.9.71:52140 laddr=10.4.1.20:6379 fd=11 name= age=14091 idle=14088 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 qbuf=0 qbuf-free=20448 argv-mem=0 multi-mem=0 rbs=1024 rbp=0 obl=0 oll=0 omem=0 tot-mem=12288 events=r cmd=client|list user=default redir=-1 resp=2\nid=48214 addr=10.4.9.72:41022 laddr=10.4.1.20:6379 fd=12 name= age=14090 idle=14087 flags=N db=0 sub=0 psub=0 ssub=0 multi=-1 qbuf=0 qbuf-free=20448 argv-mem=0 multi-mem=0 rbs=1024 rbp=0 obl=0 oll=0 omem=0 tot-mem=12288 events=r cmd=client|list user=default redir=-1 resp=2"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Those two sockets have been open and idle for nearly four hours — long-lived, which points at a pool holding connections rather than request traffic. Before I re-derive the last incident from scratch, I want its actual findings: which pool, what the cap was changed to, and what was left open. Pulling the earlier session's context in instead of guessing."
+        }
+      ]
+    }
+  ]
+}
