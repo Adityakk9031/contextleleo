@@ -195,7 +195,7 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 591 passing, 0 failing (this is the verified state)
+## 9. Tests — 592 passing, 0 failing (this is the verified state)
 
 **Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 125 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
@@ -823,3 +823,13 @@ choice through the continue paths. Tests: `retrieval_reaches_other_projects_and_
 the new session keeps `txcript-main` as its folder. Suite: 591 passed / 0 failed.
 
 **Caveat.** A fix from another project may not apply here; chunks stay labelled quoted history, reference only.
+
+## 28. Jev relevance floor 0.7 for retrieved chunks (2026-10-11)
+
+**Measured, same query** ("sentinel guard bug hedge vault stays protected audit fix", `context`): the top 6 chunks
+scored 0.85–0.93 (~3.6k tokens); asking for 12 reached down to 0.64 (~10k tokens). The apparent "quality drop"
+after the multi-project change was the chunk count (plus reading the ascending-sorted list from the bottom), not
+the feature: `context` already searched every project. **Change:** `RetrievalOptions.min_jev_relevance`
+(default `retrieval::MIN_JEV_RELEVANCE = 0.7`) drops chunks Jev only barely accepts (0.5–0.7) in `reconcile`;
+Jev's own yes/no line stays 0.5. Tests: `chunks_jev_only_barely_accepts_are_left_out_by_default`; two existing
+tests adjusted to realistic Jev answers. Suite: 592 passed / 0 failed.

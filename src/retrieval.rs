@@ -158,6 +158,11 @@ pub struct RetrievalOptions {
     pub exclude_copies_of: Option<ConversationFingerprint>,
     /// Drop chunks scoring under this (0..1).
     pub min_relevance: f32,
+    /// After the Jev API has judged the candidates, keep only chunks whose
+    /// Jev relevance is at least this (0..1). Jev's own yes/no line is 0.5;
+    /// the chunks just above it are the ones that dilute a handoff, so the
+    /// default is stricter ([`MIN_JEV_RELEVANCE`]).
+    pub min_jev_relevance: f32,
     /// Return each session's best chunk only (`true`) or several (`false`).
     pub one_chunk_per_session: bool,
 }
@@ -172,6 +177,7 @@ impl Default for RetrievalOptions {
             exclude_sessions: Vec::new(),
             exclude_copies_of: None,
             min_relevance: MIN_RELEVANCE,
+            min_jev_relevance: MIN_JEV_RELEVANCE,
             one_chunk_per_session: false,
         }
     }
@@ -233,6 +239,11 @@ fn first_user_text(transcript: &Transcript<Common>) -> Option<String> {
             _ => None,
         })
 }
+
+/// The default floor on a chunk's *Jev* relevance. On the same query, the six
+/// best chunks scored 0.85–0.93 and chunks 7–12 reached down to 0.64 while
+/// tripling the tokens, so the default keeps what Jev is clearly sure about.
+pub const MIN_JEV_RELEVANCE: f32 = 0.7;
 
 /// Chunks returned when [`RetrievalOptions`] is default: small enough to
 /// optimize fast, large enough to cover a multi-session investigation.
@@ -1063,8 +1074,11 @@ fn reconcile(
             });
         };
         if decision.decision == JevDecisionKind::Retrieve {
-            chunk.relevance = decision.relevance.clamp(0.0, 1.0);
-            selected.push(chunk);
+            let relevance = decision.relevance.clamp(0.0, 1.0);
+            if relevance >= options.min_jev_relevance {
+                chunk.relevance = relevance;
+                selected.push(chunk);
+            }
         }
     }
     if let Some(id) = answered.keys().next() {
@@ -1317,7 +1331,7 @@ mod jev_rank_tests {
         let weak = candidate("weak-local", 0.20);
         let decisions = vec![
             decision(&strong, 0.0, JevDecisionKind::Ignore),
-            decision(&mid, 0.42, JevDecisionKind::Retrieve),
+            decision(&mid, 0.78, JevDecisionKind::Retrieve),
             decision(&weak, 0.91, JevDecisionKind::Retrieve),
         ];
         let selected = reconcile(
@@ -1331,7 +1345,34 @@ mod jev_rank_tests {
         assert_eq!(selected[0].content, "content of weak-local");
         assert_eq!(selected[0].relevance, 0.91);
         assert_eq!(selected[1].content, "content of mid-local");
-        assert_eq!(selected[1].relevance, 0.42);
+        assert_eq!(selected[1].relevance, 0.78);
+    }
+
+    /// A chunk Jev only just accepts (0.5–0.7) is left out by default, so it
+    /// cannot dilute the handoff; a caller can lower the floor to keep it.
+    #[test]
+    fn chunks_jev_only_barely_accepts_are_left_out_by_default() {
+        let sure = candidate("sure", 0.9);
+        let borderline = candidate("borderline", 0.9);
+        let decisions = vec![
+            decision(&sure, 0.91, JevDecisionKind::Retrieve),
+            decision(&borderline, 0.62, JevDecisionKind::Retrieve),
+        ];
+        let strict = reconcile(
+            vec![sure.clone(), borderline.clone()],
+            decisions.clone(),
+            &RetrievalOptions::default(),
+        )
+        .expect("reconcile");
+        assert_eq!(strict.len(), 1);
+        assert_eq!(strict[0].content, "content of sure");
+
+        let lenient = RetrievalOptions {
+            min_jev_relevance: 0.5,
+            ..RetrievalOptions::default()
+        };
+        let all = reconcile(vec![sure, borderline], decisions, &lenient).expect("reconcile");
+        assert_eq!(all.len(), 2);
     }
 
     #[test]
@@ -1356,6 +1397,7 @@ mod jev_rank_tests {
         // admits the first chunk and leaves no room for the second.
         let token_capped = RetrievalOptions {
             max_tokens: Some(4),
+            min_jev_relevance: 0.0,
             ..RetrievalOptions::default()
         };
         let first = candidate("first", 0.6);
