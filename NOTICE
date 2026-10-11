@@ -1,0 +1,15 @@
+contextleleo
+Copyright 2026 Aditya Kumar Singh
+
+This product is built on txcript (https://github.com/skillsynchq/txcript) by Skillsync, licensed under the
+Apache License, Version 2.0.
+
+Portions of this work — the canonical transcript model, the agent adapters
+(Claude Code, Codex, OpenCode, Cursor, pi, Campfire, Cowork, Grok, fx, Hermes,
+Amp, Antigravity, and the live-account readers), the search index, the MCP
+server, and the command-line foundation — originate in txcript.
+
+Changes and additions in this work include: the Jev retrieval and ranking
+stage, task-aware trimming with traceable stand-ins, cross-project retrieval,
+credential masking, the `setup` command, the Freebuff adapter, Antigravity
+project placement, and the demo kit.
