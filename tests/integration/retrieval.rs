@@ -301,6 +301,35 @@ fn copies_of_a_conversation_are_recognised_but_other_sessions_are_not() {
     assert!(fingerprint.matches(&source));
 }
 
+/// A handoff contextleleo wrote is recognised (it opens with the retrieval ask,
+/// or carries a stand-in), so retrieval never hands its own earlier output
+/// back; ordinary sessions are not mistaken for one.
+#[test]
+fn handoffs_written_by_contextleleo_are_recognised() {
+    use contextleleo::retrieval::is_handoff;
+    let session = |first: &str, later: &str| {
+        Transcript::new(
+            meta("s", 3, "/work/repo"),
+            vec![
+                text_message(Role::User, first, 1),
+                text_message(Role::Assistant, later, 2),
+            ],
+        )
+    };
+    assert!(is_handoff(&session(
+        "[context request]\nfix the redis bug",
+        "ok"
+    )));
+    assert!(is_handoff(&session(
+        "fix the redis bug",
+        "[jev: compressed from session `abc` message 4 (~300 tokens); view with `contextleleo view abc#5`]"
+    )));
+    assert!(!is_handoff(&session(
+        "fix the redis bug",
+        "done, pool size raised"
+    )));
+}
+
 /// A retrieved chunk that quotes a `.env` line keeps the variable's name
 /// and shows stars for the value, so neither the printed chunks nor the
 /// handoff written into the next agent carries the key.

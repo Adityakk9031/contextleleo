@@ -228,6 +228,33 @@ impl ConversationFingerprint {
     }
 }
 
+/// Whether `transcript` is a handoff contextleleo itself wrote: it opens with a
+/// `[context request]` (a `--retrieve` handoff) or carries a
+/// `[jev: compressed from session …]` stand-in. Such a session only repeats
+/// other sessions' content, so retrieving from it would hand back a copy of
+/// what the originals already say — and, when it was made from the session
+/// being continued, that session itself.
+#[must_use]
+pub fn is_handoff(transcript: &Transcript<Common>) -> bool {
+    const ASK: &str = "[context request]";
+    const STAND_IN: &str = "[jev: compressed from session";
+    if first_user_text(transcript).is_some_and(|text| text.starts_with(ASK)) {
+        return true;
+    }
+    transcript
+        .body
+        .iter()
+        .flat_map(|message| &message.content)
+        .any(|block| match block {
+            Block::Text { text }
+            | Block::ToolResult {
+                content: ToolOutput::Text(text),
+                ..
+            } => text.contains(STAND_IN),
+            _ => false,
+        })
+}
+
 fn first_user_text(transcript: &Transcript<Common>) -> Option<String> {
     transcript
         .body
@@ -422,7 +449,7 @@ pub fn retrieve_local(
             if options
                 .exclude_copies_of
                 .as_ref()
-                .is_some_and(|fingerprint| fingerprint.matches(&common))
+                .is_some_and(|fingerprint| fingerprint.matches(&common) || is_handoff(&common))
             {
                 continue;
             }
