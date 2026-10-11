@@ -54,19 +54,20 @@ contextleleo is built on **[txcript](https://github.com/skillsynchq/txcript)**, 
 ## 🎬 Live Demo
 
 <!--
-  Want the autoplaying inline player (like a GitHub-hosted clip)? Open this file in the GitHub
-  web editor, drag docs/assets/demo.mp4 into it, and paste the generated
+  Want the full-length inline player (a GitHub-hosted video) instead of this preview loop?
+  Open this file in the GitHub web editor, drag docs/assets/demo.mp4 (8.7 MB, under GitHub's
+  10 MB limit for free accounts) into it, and paste the generated
   https://github.com/user-attachments/assets/... URL on its own line right here.
 -->
 
 <p align="center">
   <a href="docs/assets/demo.mp4">
-    <img src="docs/assets/demo-poster.png" alt="contextleleo demo video: a Claude Code session trimmed by Jev and opened in Antigravity, plus retrieval of an old fix from another project" width="760">
+    <img src="docs/assets/demo-preview.gif" alt="contextleleo demo: a Claude Code session trimmed by Jev and opened in Antigravity, plus retrieval of an old fix from another project" width="760">
   </a>
 </p>
 
 <p align="center">
-  <a href="docs/assets/demo.mp4"><b>▶️ Watch the Full 2:49 Demo Video with Voiceover Narration (1080p, 19 MB)</b></a>
+  <a href="docs/assets/demo.mp4"><b>▶️ Watch the Full 2:49 Demo Video with Voiceover Narration (720p, 8.7 MB)</b></a>
 </p>
 
 > **What's happening in the video:** a huge Claude Code session is scored by Jev for its next task and handed to **Antigravity** with about **40% fewer tokens**. Then a bug found in that session is matched to an old fix from **another project and another agent**: Jev scores 64 candidate passages, keeps three at 0.94, ignores the rest, and the result opens in Antigravity under the right project. Every shrunk message links back to its untouched original.
