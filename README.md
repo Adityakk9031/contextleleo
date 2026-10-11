@@ -115,7 +115,7 @@ optimizes the whole to `--budget`.
 
 Add `--task "what the next agent will do"` to `continue --jev` and Jev scores every message of the
 session being handed off for relevance to that task. Jev's score decides keep / compress / drop for each message you did not write: 0.7 or more is kept in full (even big tool output), below 0.3 is dropped, anything between becomes a stand-in with a `view` link to the original. `--budget` is optional and still trims further, least relevant first. Your messages and error results are never lowered, whatever Jev says, and
-without `--task` the default rules decide exactly as before.
+without `--task` the default rules decide exactly as before. Add `--explain` to print every message's Jev score and decision (a table on stderr), and every `--jev` run ends with an estimated `tokens: ~before → ~after (-N%)` line. If a `--budget` is too small to meet (your own messages alone set a floor), `--task` keeps Jev's decisions and tells you the floor instead of dropping everything else.
 
 **See the whole pipeline run:** `./demo/run.sh` seeds an earlier incident and tonight's repeat of it into Antigravity's store format, retrieves the earlier answer with Jev ranking the candidates (never from the session being continued), trims the handoff, and writes it into Freebuff's own store as a new thread. It is hermetic by default (needs a Jev key, no agent installed), with a [captured transcript](demo/transcript.md) and a [shot-by-shot video script](demo/VIDEO_SCRIPT.md).
 

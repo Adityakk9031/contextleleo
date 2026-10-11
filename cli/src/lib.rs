@@ -228,6 +228,11 @@ pub enum SessionCommand {
         /// `TYPESAFE_API_KEY`).
         #[arg(long, value_name = "TEXT", requires = "jev")]
         task: Option<String>,
+        /// With --task: print each message's Jev score and decision (keep /
+        /// shrink / drop) to stderr, so you can see why the handoff looks
+        /// the way it does.
+        #[arg(long, requires = "task")]
+        explain: bool,
         /// Harness-specific mint / import options (repeatable). Each value is
         /// either `key=value` or a JSON object. Merged left-to-right; unknown
         /// keys are ignored by harnesses that do not consume them. `grok_bot`
@@ -505,6 +510,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             budget,
             retrieve,
             task,
+            explain,
             metadata,
         } => cmd_continue(
             &id,
@@ -516,6 +522,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             budget,
             retrieve.as_deref(),
             task.as_deref(),
+            explain,
             &metadata,
         ),
         SessionCommand::Crop { source, with, from } => cmd_crop(&source, with, from),
@@ -1373,6 +1380,30 @@ mod jev_continue_tests {
         assert_eq!(map.origin(9), ("current".to_string(), 6));
     }
 
+    /// `--explain` previews are one line, capped, and never show a
+    /// credential value.
+    #[test]
+    fn explain_previews_are_short_one_line_and_masked() {
+        let message = |text: &str| Message {
+            role: Role::Assistant,
+            content: vec![Block::Text { text: text.into() }],
+            timestamp: chrono::Utc::now(),
+            model: None,
+            stop_reason: None,
+            usage: None,
+        };
+        let secret = message("set JEV_API_KEY=jev_live_abc123def456ghi789\nthen rerun");
+        let preview = message_preview(&secret);
+        assert!(!preview.contains("abc123def456"), "{preview}");
+        assert!(preview.contains("JEV_API_KEY=********"), "{preview}");
+        assert!(!preview.contains('\n'), "{preview}");
+
+        let long = message(&"word ".repeat(100));
+        let preview = message_preview(&long);
+        assert!(preview.chars().count() <= 61, "{preview}");
+        assert!(preview.ends_with('…'), "{preview}");
+    }
+
     /// Without `--jev`, `apply_jev_with` is a no-op: the copy passes
     /// through byte-identical.
     #[test]
@@ -1744,8 +1775,10 @@ fn cmd_continue(
     budget: Option<usize>,
     retrieve: Option<&str>,
     task: Option<&str>,
+    explain: bool,
     metadata_specs: &[String],
 ) -> Result<ExitCode, String> {
+    let task = task.map(|text| TaskSpec { text, explain });
     let metadata = parse_metadata_specs(metadata_specs)?;
     let metadata =
         (!metadata.as_object().is_some_and(serde_json::Map::is_empty)).then_some(metadata);
@@ -1930,58 +1963,160 @@ impl Prepended {
     }
 }
 
+/// The `--task` request: what the next agent will do, and whether to print
+/// the per-message scores.
+#[derive(Clone, Copy)]
+struct TaskSpec<'a> {
+    text: &'a str,
+    explain: bool,
+}
+
 /// `prepended` is the origin map of a retrieval-prepended copy, and `task`
-/// the `--task` text. With `--task` the scoring runs through the Jev API
+/// the `--task` request. With `--task` the scoring runs through the Jev API
 /// (see [`task_plan`]) instead of the deterministic rules; without it the
 /// default rules decide exactly as before.
+///
+/// A `--budget` this handoff cannot meet never wipes out Jev's picks: with
+/// `--task`, an unreachable budget falls back to Jev's own decisions and says
+/// how large the protected part is, instead of dropping everything that is
+/// not a user message. After any `--jev` pass the estimated token saving is
+/// reported.
 fn apply_jev_with(
     common: &mut Transcript<Common>,
     jev: JevPlan,
     prepended: Option<&Prepended>,
-    task: Option<&str>,
+    task: Option<TaskSpec<'_>>,
 ) -> Result<(), String> {
     let Some(budget) = jev else {
         return Ok(());
     };
     let (planned, scored) = match task {
         Some(task) => {
-            let (plan, scored) = task_plan(common, budget, task, prepended)?;
-            (plan, Some(scored))
+            let (plan, relevance) = task_plan(common, budget, task.text, prepended)?;
+            (plan, Some(relevance))
         }
         None => (jev::plan(common, budget), None),
     };
-    let (allocated, report) = jev::allocate(common, &planned);
+    let (mut allocated, mut report) = jev::allocate(common, &planned);
     if report.status == jev::AllocationStatus::OverBudget {
         // OverBudget can only be reached with a budget set.
         let requested = budget.unwrap_or_default();
-        eprintln!(
-            "{} --budget {requested} is below what this handoff can shed: ~{} tokens stay \
-             because your messages and error results are never dropped. Raise --budget, \
-             or narrow the handoff with a #range",
-            style::dim("warning:", style::enabled_err()),
-            report.selected_tokens,
-        );
+        let protected = report.selected_tokens;
+        if scored.is_some() {
+            // Jev already chose what matters; do not let an impossible budget
+            // undo that. Keep its decisions and report the floor.
+            let mut unbudgeted = planned.clone();
+            unbudgeted.budget = None;
+            (allocated, report) = jev::allocate(common, &unbudgeted);
+            eprintln!(
+                "{} --budget {requested} cannot be met: your messages and error results alone \
+                 are ~{protected} tokens and are never dropped. Kept Jev's decisions without \
+                 trimming further; raise --budget above ~{protected} to trim to a limit",
+                style::dim("warning:", style::enabled_err()),
+            );
+        } else {
+            eprintln!(
+                "{} --budget {requested} is below what this handoff can shed: ~{protected} tokens \
+                 stay because your messages and error results are never dropped. Raise --budget, \
+                 or narrow the handoff with a #range",
+                style::dim("warning:", style::enabled_err()),
+            );
+        }
     }
-    if let Some(scored) = scored {
+    if let Some(relevance) = &scored {
         eprintln!(
-            "{} Jev scored {scored} messages ({} kept full, {} compressed, {} dropped)",
+            "{} Jev scored {} messages ({} kept full, {} compressed, {} dropped)",
             style::dim("task-aware:", style::enabled_err()),
+            relevance.len(),
             report.counts[0],
             report.counts[1],
             report.counts[2],
         );
+        if task.is_some_and(|task| task.explain) {
+            explain_scores(common, &allocated, relevance);
+        }
     }
+    let before: usize = common.body.iter().map(jev::estimate_message_tokens).sum();
     let applied = match prepended {
         Some(map) => jev::apply_with(common, &allocated, &|index| map.origin(index)),
         None => jev::apply(common, &allocated),
     }
     .map_err(|e| e.to_string())?;
+    let after: usize = applied.body.iter().map(jev::estimate_message_tokens).sum();
+    if let Some(saved) = (before.saturating_sub(after) * 100).checked_div(before) {
+        eprintln!(
+            "{} ~{before} → ~{after} tokens (-{saved}%, estimated)",
+            style::dim("tokens:", style::enabled_err()),
+        );
+    }
     *common = applied;
     Ok(())
 }
 
+/// One stderr row per message: its number (as `view` numbers it), role,
+/// estimated tokens, Jev's score (`-` when Jev did not judge it), the final
+/// decision, and a short credential-masked preview.
+fn explain_scores(
+    common: &Transcript<Common>,
+    plan: &jev::ContextPlan,
+    relevance: &std::collections::HashMap<usize, f32>,
+) {
+    eprintln!(
+        "  {:>4}  {:<9} {:>6}  {:>4}  {:<6}  text",
+        "#", "role", "tokens", "jev", "action"
+    );
+    for (index, (message, item)) in common.body.iter().zip(&plan.items).enumerate() {
+        let score = relevance
+            .get(&index)
+            .map_or_else(|| "-".to_string(), |value| format!("{value:.2}"));
+        let action = match item.decision {
+            jev::ContextDecision::KeepFull => "keep",
+            jev::ContextDecision::Compress => "shrink",
+            jev::ContextDecision::Drop => "drop",
+        };
+        eprintln!(
+            "  {:>4}  {:<9} {:>6}  {:>4}  {:<6}  {}",
+            index + 1,
+            format!("{:?}", message.role).to_lowercase(),
+            item.token_cost,
+            score,
+            action,
+            message_preview(message),
+        );
+    }
+}
+
+/// A one-line, credential-masked preview of a message for `--explain`.
+fn message_preview(message: &contextleleo::common::Message) -> String {
+    use contextleleo::common::{Block, ToolOutput};
+    let raw = message
+        .content
+        .iter()
+        .find_map(|block| match block {
+            Block::Text { text } => Some(text.clone()),
+            Block::ToolResult {
+                content: ToolOutput::Text(text),
+                ..
+            } => Some(format!("result: {text}")),
+            Block::ToolResult { .. } => Some("result".to_string()),
+            Block::ToolUse { tool, .. } => Some(format!("call: {}", tool.to_canonical().0)),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let flat: String = contextleleo::redact::mask(&raw)
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let flat = flat.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut preview: String = flat.chars().take(60).collect();
+    if flat.chars().count() > 60 {
+        preview.push('…');
+    }
+    preview
+}
+
 /// Plan `common` with Jev's task-relevance scores steering the budget
-/// ladder, returning the plan and how many messages Jev judged.
+/// ladder, returning the plan and Jev's relevance per message of `common`.
 ///
 /// Fails hard without a key, exactly like `--retrieve`: the task judgment
 /// has no local fallback. Only the continued session's own messages are
@@ -1993,7 +2128,7 @@ fn task_plan(
     budget: Option<usize>,
     task: &str,
     prepended: Option<&Prepended>,
-) -> Result<(jev::ContextPlan, usize), String> {
+) -> Result<(jev::ContextPlan, std::collections::HashMap<usize, f32>), String> {
     use contextleleo::retrieval::{TaskScorer, jev_message_relevance};
     let client = jev_client()?;
     // Prepended messages lead the body; the continued session's own
@@ -2004,17 +2139,16 @@ fn task_plan(
     let own: Transcript<Common> =
         Transcript::new(common.meta.clone(), common.body[offset..].to_vec());
     let relevance = jev_message_relevance(&client, task, &own).map_err(|e| e.to_string())?;
-    let judged = relevance.len();
     // Re-key the tail's indices back into the assembled transcript.
-    let relevance = relevance
+    let relevance: std::collections::HashMap<usize, f32> = relevance
         .into_iter()
         .map(|(index, value)| (index + offset, value))
         .collect();
     let base = contextleleo::jev::DeterministicScorer::default();
-    let scorer = TaskScorer::new(&base, relevance);
+    let scorer = TaskScorer::new(&base, relevance.clone());
     Ok((
         contextleleo::jev::plan_with(common, budget, &scorer),
-        judged,
+        relevance,
     ))
 }
 
@@ -2263,7 +2397,7 @@ fn continue_document(
     out: Option<&std::path::Path>,
     resume: bool,
     jev: JevPlan,
-    task: Option<&str>,
+    task: Option<TaskSpec<'_>>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
     let target = with.ok_or_else(|| {
@@ -2445,7 +2579,7 @@ fn continue_amp_server_thread(
     out: Option<&std::path::Path>,
     resume: bool,
     jev: JevPlan,
-    task: Option<&str>,
+    task: Option<TaskSpec<'_>>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
     let common = load_amp_server_thread(id)?;
@@ -2495,7 +2629,7 @@ fn continue_session(
     resume: bool,
     jev: JevPlan,
     retrieve: Option<&str>,
-    task: Option<&str>,
+    task: Option<TaskSpec<'_>>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
     let target = with.unwrap_or(found.harness);
@@ -2572,7 +2706,7 @@ fn continue_loaded_remote(
     resume: bool,
     jev: JevPlan,
     retrieve: Option<&str>,
-    task: Option<&str>,
+    task: Option<TaskSpec<'_>>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
     let cwd = common.meta.cwd.clone();

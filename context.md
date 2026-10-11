@@ -195,9 +195,9 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 584 passing, 0 failing (this is the verified state)
+## 9. Tests — 585 passing, 0 failing (this is the verified state)
 
-**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 123 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
+**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 124 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
 `tests/integration/retrieval.rs` holds **12 `#[test]` fns** (registered in `tests/integration/main.rs` as `mod retrieval;`):
 
@@ -718,3 +718,24 @@ does); README/usage no longer claim it does.
 spend): status none → piped setup (file mode `-rw-------`) → status file → `context` uses the stored key
 → env beats file → `--remove` → back to the configuration error; and through a pty: the explanation,
 `[y/N]`, hidden key entry, and the once-only hint. Suite: 584 passed / 0 failed / 1 ignored (was 579).
+
+## 23. `--explain`, token-saving line, and an impossible budget no longer wipes Jev's picks (2026-10-10, working tree)
+
+**Found by running it for real.** `continue <this session> --jev --task … --budget 8000` produced a 47-message
+Antigravity session: 45 user messages, 1 assistant. The budget was below the floor set by user messages
+and errors (~21.5k tokens, never droppable), so `allocate` dropped everything else — including what Jev
+rated 0.95. Without a budget the same task kept 415/476 messages (-12%) because "keep building
+contextleleo" is relevant to a whole session about contextleleo.
+
+**Changes (`cli/src/lib.rs`).** (1) With `--task`, an `OverBudget` plan falls back to Jev's own decisions
+(`budget = None`) and warns with the protected floor; the rule-based `--jev --budget` path is unchanged.
+(2) `continue --explain` (requires `--task`) prints `#`, role, tokens, Jev score (`-` = not judged), action
+(keep / shrink / drop), and a 60-char credential-masked preview per message. (3) Every `--jev` run prints
+`tokens: ~before → ~after (-N%, estimated)` from `estimate_message_tokens` over the body before/after apply.
+`TaskSpec { text, explain }` replaces the bare `Option<&str>` task through the continue paths.
+
+**Verified live** (real Jev, this session, output redirected with `CONTEXTLELEO_ANTIGRAVITY_ROOT` to a temp
+dir, then deleted): task "publish the first release of contextleleo to crates.io and npm", budget 8000 →
+warning with floor 21,534; Jev scored 235 messages → 310 kept, 154 shrunk, 12 dropped; `~139048 → ~70602
+tokens (-49%)`. A narrower task saves far more than a broad one. Open: the 0.7 / 0.3 cutoffs are still
+untuned guesses; `--explain` exists to tune them. Suite: 585 passed / 0 failed / 1 ignored (was 584; +1).
