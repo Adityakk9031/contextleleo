@@ -1287,7 +1287,15 @@ impl<S: jev::ContextScorer> jev::ContextScorer for TaskScorer<'_, S> {
             if survives {
                 for &index in &group {
                     if items[index].decision == jev::ContextDecision::Drop {
-                        items[index].decision = jev::ContextDecision::Compress;
+                        // The half that stays with its partner: a stand-in
+                        // when that is smaller, the whole message when it is
+                        // too short for a stand-in to save anything.
+                        items[index].decision =
+                            if items[index].token_cost < jev::MIN_COMPRESS_TOKENS {
+                                jev::ContextDecision::KeepFull
+                            } else {
+                                jev::ContextDecision::Compress
+                            };
                     }
                 }
             }
@@ -1884,8 +1892,29 @@ mod task_scoring_tests {
         let relevance = HashMap::from([(1usize, 0.02), (2, 0.95)]);
         let base = jev::DeterministicScorer::default();
         let planned = jev::plan_with(&source, None, &TaskScorer::new(&base, relevance));
-        assert_eq!(planned.items[1].decision, jev::ContextDecision::Compress);
+        // The dropped half is tiny, so it stays whole rather than becoming a
+        // stand-in longer than the message.
+        assert_eq!(planned.items[1].decision, jev::ContextDecision::KeepFull);
         assert_eq!(planned.items[2].decision, jev::ContextDecision::KeepFull);
+        jev::apply(&source, &planned).expect("the pair stays whole");
+    }
+
+    /// A dropped half big enough for a stand-in to save tokens still becomes
+    /// one when its partner stays.
+    #[test]
+    fn a_large_dropped_half_of_a_surviving_pair_becomes_a_stand_in() {
+        let (call, result) = tool_pair("t1", "cargo test", &"line of output\n".repeat(200), false);
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            call,
+            result,
+        ]);
+        // Jev keeps the call's text-less partner (the call is unscored) and
+        // rates the big result irrelevant.
+        let relevance = HashMap::from([(2usize, 0.02)]);
+        let base = jev::DeterministicScorer::default();
+        let planned = jev::plan_with(&source, None, &TaskScorer::new(&base, relevance));
+        assert_eq!(planned.items[2].decision, jev::ContextDecision::Compress);
         jev::apply(&source, &planned).expect("the pair stays whole");
     }
 

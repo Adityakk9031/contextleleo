@@ -195,7 +195,7 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 593 passing, 0 failing (this is the verified state)
+## 9. Tests — 596 passing, 0 failing (this is the verified state)
 
 **Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 125 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
@@ -854,3 +854,19 @@ longer exists is accepted with a note, because the app matches by path). Test
 wrote `10e260a3` with workspace `LicenseShield-AI` and project id `cf339480-db39-47d7-a2d1-0b619941ca44`, 981 steps;
 12 chunks retrieved (liquiguard-somnia ×8, jev cli ×3, agent ×1). Appearance under the project in the app needs a
 relaunch (the app re-indexes at startup) and is to be confirmed by the user.
+
+## 30. Confirmed in the Antigravity app; tiny stand-ins from the pair rule (2026-10-11)
+
+**Confirmed (screenshots, after a full quit + relaunch of the app — the old `language_server` process had last scanned
+conversations at startup, hours before the new ones were written):** a conversation written with `continue
+--retrieve … --in beautiful-nobel --with antigravity` is listed under the **beautiful-nobel** project in the
+sidebar, titled `[context request]` (the title comes from the first message), and opens with stand-ins and the app's
+native tool-call rows. A conversation written for LicenseShield-AI sits under that project beside the native one.
+
+**Found in the screenshots:** stand-ins for 32–73-token messages. 25 of 142 stand-ins in one handoff were under 150
+tokens. Cause: the pair rule in `TaskScorer` lifted a dropped half of a surviving tool pair to `Compress` whatever its
+size. A tiny half is now kept whole (`MIN_COMPRESS_TOKENS`); a large one still becomes a stand-in. Tests:
+`task_scoring_lifts_a_dropped_half_of_a_surviving_pair` (now expects `KeepFull` for a tiny half) and
+`a_large_dropped_half_of_a_surviving_pair_becomes_a_stand_in`. Suite: 596 passed / 0 failed.
+
+**Open:** the conversation title is `[context request]`; naming it after the source title and the query would read better.
