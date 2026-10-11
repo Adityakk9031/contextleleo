@@ -195,9 +195,9 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 585 passing, 0 failing (this is the verified state)
+## 9. Tests — 589 passing, 0 failing (this is the verified state)
 
-**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 124 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
+**Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 125 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
 `tests/integration/retrieval.rs` holds **12 `#[test]` fns** (registered in `tests/integration/main.rs` as `mod retrieval;`):
 
@@ -739,3 +739,65 @@ dir, then deleted): task "publish the first release of contextleleo to crates.io
 warning with floor 21,534; Jev scored 235 messages → 310 kept, 154 shrunk, 12 dropped; `~139048 → ~70602
 tokens (-49%)`. A narrower task saves far more than a broad one. Open: the 0.7 / 0.3 cutoffs are still
 untuned guesses; `--explain` exists to tune them. Suite: 585 passed / 0 failed / 1 ignored (was 584; +1).
+
+## 24. Retrieved chunks keep their Jev score into the trimming pass (2026-10-11, working tree)
+
+**The gap.** §20 and the README said retrieved chunks "already carry the relevance retrieval ranked them
+by" when `--task` trims. That was true of `context --budget` (`RelevanceScorer` in `retrieve_and_optimize`)
+but **not** of `continue --retrieve --jev`: the chunks were prepended and then scored by the generic
+`DeterministicScorer`, so a 0.97 chunk and a 0.55 chunk were treated alike when a budget forced cuts.
+
+**The fix (`cli/src/lib.rs`, `src/retrieval.rs`).** `Prepended` now carries `relevance` (index → Jev
+retrieval score, from `retrieval::relevance_by_message_index`, now `pub`; message 0, the task ask, is 1.0).
+With `--task`, `task_plan` merges it into the `TaskScorer` map (chunks score ≥ 0.5 by construction: 0.7+
+keep, 0.5–0.7 shrink); without `--task`, `apply_jev_with` plans through `RelevanceScorer` over the
+deterministic base, as `context --budget` does. `task-aware: Jev scored N` still counts only the session's
+own messages. Test `retrieved_chunks_are_ranked_by_their_jev_score_when_trimming` (a 0.55 chunk folds
+under a tight budget while a 0.95 chunk stays whole; swapping the scores fails it). Suite: 586 passed /
+0 failed / 1 ignored (was 585). Not yet run live against the real Jev API.
+
+## 25. Incident: the Freebuff writer overwrote other threads' messages (2026-10-11, fixed in working tree)
+
+**What happened.** Two `continue … --with freebuff` runs against the real Freebuff store left the user's
+real thread (`e2748cef`, 207 messages) and the first handoff copy with **0 messages**; the app showed
+empty threads. Cause: `messages.seq` is `INTEGER PRIMARY KEY AUTOINCREMENT` — one counter shared by every
+thread in the project database — but `insert_message` wrote each message with an explicit per-thread
+`seq` (1..N, from `MessageRow`) through `INSERT OR REPLACE`, so every new thread replaced the rows other
+threads already held at the same `seq`. The first handoff overwrote the front of `e2748cef`; the second
+overwrote the first. Found by comparing `messages` row counts in the live database (611 rows, all one
+thread) after the UI showed empty threads. The Antigravity writer is unaffected (one database file per
+conversation); other SQLite-backed writers were **not** audited.
+
+**Fix.** `insert_message` no longer writes `seq` (the database assigns the next free value; rows go in
+order). Regression test `saving_a_thread_never_overwrites_another_threads_messages` fails on the old code
+(existing thread 2 → 0 messages). `docs/formats/freebuff.md` records that `seq` is global.
+
+**Damage control.** The affected database folder was copied to `~/contextleleo-freebuff-db-backup-2026-10-11/`
+with a `.recover` dump of the freed pages (73% of the file): ~127 of `e2748cef`'s 207 message rows are
+present in `lost_and_found` (columns c1=thread_id … c10=ts; the row id is the old `seq`). Not restored yet.
+
+**Also fixed: retrieval no longer finds copies of the conversation it continues.** A handoff, a resumed
+snapshot, or a fork carries the same conversation under a new id, so `--retrieve` kept retrieving the
+previous handoff (all 7 chunks of one run came from it). `RetrievalOptions.exclude_copies_of` takes a
+`ConversationFingerprint` (first user text, or title + cwd); `retrieve_local` skips matching sessions.
+Test `copies_of_a_conversation_are_recognised_but_other_sessions_are_not`. Suite: 588 passed / 0 failed.
+
+**Antigravity visibility (same day).** The new conversation is in the app's `conversation_summaries.db`
+(768 steps, workspace `txcript-main`) but with `project_id = default-cli-project`, a project the sidebar
+does not list; look under *Conversation History*, or add `txcript-main` as a project. Unconfirmed.
+
+## 26. Short messages are no longer folded by task scoring (2026-10-11)
+
+Seen in the Antigravity app: 49- and 78-token messages replaced by a `[jev: compressed …]` line as long as
+the original, plus many near-empty bubbles. `TaskScorer` now keeps a mid-scored (0.3–0.7) message whole
+when it is under `jev::MIN_COMPRESS_TOKENS` (150: the stand-in's preview plus reference is about that
+long); short *irrelevant* messages are still dropped (that saves tokens). The rule-based optimizer
+(`allocate` / `apply`) is unchanged: changing it would break eight tests that document its contract, and
+its budget path can still fold short messages. Tests: `short_mid_scored_messages_are_kept_whole_not_folded`
+(+ one existing test uses a long mid-scored message). Suite: 589 passed / 0 failed.
+
+**Confirmed in the real apps (2026-10-11 screenshots):** an Antigravity conversation written by
+`continue --jev --task` opens with stand-ins `[jev: compressed from session … message N (~M tokens);
+view with contextleleo view …#N+1]` and native tool-call rendering; the Freebuff app lists handoff
+threads (its own damaged thread showed empty because of §25). Antigravity lists the conversation under
+*Conversation History* (project `default-cli-project`), not under a sidebar project.

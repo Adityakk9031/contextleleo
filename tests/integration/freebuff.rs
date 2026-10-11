@@ -393,6 +393,62 @@ fn store_saves_into_project_by_cwd_and_round_trips() {
     assert_eq!(count, 2, "save must replace, not duplicate, messages");
 }
 
+/// `messages.seq` is one global AUTOINCREMENT key across every thread in a
+/// project database. Saving a new thread must never reuse a `seq` another
+/// thread already holds: the old writer numbered messages 1..N per thread
+/// and `INSERT OR REPLACE` silently overwrote the other threads' rows.
+#[test]
+#[cfg(feature = "opencode")]
+fn saving_a_thread_never_overwrites_another_threads_messages() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = make_store(dir.path());
+    let project = seed_project(&store, "/tmp/proj-shared", "existing-thread");
+    let db = project.join("desktop-v2.db");
+    let count_of = |thread: &str| -> i64 {
+        rusqlite::Connection::open(&db)
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM messages WHERE thread_id = ?1",
+                rusqlite::params![thread],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    assert_eq!(count_of("existing-thread"), 2, "fixture sanity");
+
+    // Two new threads written into the same project, as `continue` does.
+    for id in ["handoff-one", "handoff-two"] {
+        let common = sample_common(id, "/tmp/proj-shared");
+        store
+            .save(&Freebuff::from_common(&common).unwrap())
+            .unwrap();
+    }
+
+    assert_eq!(
+        count_of("existing-thread"),
+        2,
+        "the app's own thread must keep every message"
+    );
+    assert_eq!(
+        count_of("handoff-one"),
+        2,
+        "the first handoff must survive the second"
+    );
+    assert_eq!(count_of("handoff-two"), 2);
+
+    // Order inside each thread is still the conversation order.
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT role FROM messages WHERE thread_id = 'handoff-two' ORDER BY seq")
+        .unwrap();
+    let roles: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(roles, ["user", "assistant"]);
+}
+
 #[test]
 #[cfg(feature = "opencode")]
 fn store_save_adopts_existing_identity_and_matches_by_path() {

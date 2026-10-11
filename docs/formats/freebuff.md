@@ -60,7 +60,7 @@ Names below are the app's own columns and part kinds.
 | `threads.branch` | The branch the thread runs on | `Meta.git_branch` |
 | `threads.model` | The model tag (e.g. `m-7e20df6765`) | `Meta.model` |
 | `threads.created_at` / `updated_at` | Integer **milliseconds** | `Meta.timestamp` |
-| `messages.seq` | Strict conversation order | message order |
+| `messages.seq` | `INTEGER PRIMARY KEY AUTOINCREMENT` — **one counter shared by every thread in the project database**; ascending within a thread is the conversation order | message order. Never written on save: the database assigns the next free value, because numbering a thread 1..N collides with rows other threads hold and `INSERT OR REPLACE` overwrites them |
 | `messages.role` | `user` or `assistant` (observed) | `Role` |
 | `messages.parts_json` | An array of typed parts (below) | message `Block`s |
 | `messages.ts` | Integer milliseconds | `Message.timestamp` |

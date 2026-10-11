@@ -951,7 +951,8 @@ impl Store for FreebuffStore {
 
         // Deterministic replace: explicit message deletes first (REPLACE's
         // cascade depends on the pragma), then the thread row, then the
-        // rewritten messages with their seq values preserved.
+        // rewritten messages in order (seq is assigned by the database: it
+        // is global across threads, see `insert_message`).
         conn.execute("DELETE FROM messages WHERE thread_id = ?1", params![id])
             .map_err(sqlite_err)?;
         insert_row(
@@ -1317,10 +1318,17 @@ fn thread_values(thread: &ThreadRow) -> Vec<(String, SqlValue)> {
 }
 
 /// One `messages` row, parented to `thread_id`.
+///
+/// `seq` is deliberately **not** written. In the app's schema it is
+/// `INTEGER PRIMARY KEY AUTOINCREMENT` — one counter shared by every thread
+/// in the project database — so a per-thread number (1..N) collides with rows
+/// that other threads already hold, and the `INSERT OR REPLACE` below then
+/// silently overwrites them. Letting SQLite assign the next free `seq` keeps
+/// every other thread intact; rows are inserted in conversation order, so
+/// `ORDER BY seq` inside the thread is still the conversation order.
 #[cfg(feature = "opencode")]
 fn insert_message(conn: &Connection, thread_id: &str, row: &MessageRow) -> Result<()> {
     let typed = vec![
-        ("seq".into(), SqlValue::Integer(row.seq)),
         ("thread_id".into(), SqlValue::Text(thread_id.to_string())),
         ("request_id".into(), text_opt(row.request_id.as_ref())),
         ("input_id".into(), text_opt(row.input_id.as_ref())),

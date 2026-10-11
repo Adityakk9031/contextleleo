@@ -191,6 +191,60 @@ fn an_excluded_session_is_not_its_own_memory() {
     );
 }
 
+/// A copy or fork of the conversation being continued is not another
+/// session's memory: it matches on the opening message, or on title plus
+/// directory — and an unrelated session matches on neither.
+#[test]
+fn copies_of_a_conversation_are_recognised_but_other_sessions_are_not() {
+    use contextleleo::retrieval::ConversationFingerprint;
+    let session = |id: &str, title: &str, cwd: &str, first: &str| {
+        let mut transcript = Transcript::new(
+            meta(id, 3, cwd),
+            vec![
+                text_message(Role::User, first, 1),
+                text_message(Role::Assistant, "ok", 2),
+            ],
+        );
+        transcript.meta.title = Some(title.to_string());
+        transcript
+    };
+    let source = session(
+        "source",
+        "Architecture",
+        "/work/repo",
+        "check the repo architecture",
+    );
+    let fingerprint = ConversationFingerprint::of(&source);
+
+    // Same opening message under a new id, title and directory: a handoff copy.
+    let handoff = session(
+        "copy",
+        "Other title",
+        "/elsewhere",
+        "  check the repo architecture \n",
+    );
+    assert!(fingerprint.matches(&handoff));
+    // Different opening (a retrieval handoff starts with its own ask) but the
+    // same title in the same directory: still the same conversation.
+    let retrieval_copy = session(
+        "copy-2",
+        "Architecture",
+        "/work/repo",
+        "[context request] redis",
+    );
+    assert!(fingerprint.matches(&retrieval_copy));
+    // Same title in another directory, different opening: unrelated.
+    let unrelated = session(
+        "other",
+        "Architecture",
+        "/other/repo",
+        "fix the redis timeout",
+    );
+    assert!(!fingerprint.matches(&unrelated));
+    // The source matches itself (callers also exclude it by id).
+    assert!(fingerprint.matches(&source));
+}
+
 /// A retrieved chunk that quotes a `.env` line keeps the variable's name
 /// and shows stars for the value, so neither the printed chunks nor the
 /// handoff written into the next agent carries the key.

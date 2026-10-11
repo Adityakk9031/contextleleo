@@ -833,6 +833,13 @@ fn kept_spans(items: &[ContextItemScore]) -> Vec<Span> {
 /// leaving the next agent a usable preview of what was folded.
 const COMPRESS_KEEP_CHARS: usize = 160;
 
+/// Messages cheaper than this are not worth folding into a stand-in: the
+/// preview plus the `[jev: compressed …]` reference line is about this long,
+/// so folding a short message saves nothing and only adds clutter. Task-aware
+/// scoring ([`crate::retrieval::TaskScorer`]) keeps such messages whole; the
+/// rule-based optimizer's behavior is unchanged.
+pub const MIN_COMPRESS_TOKENS: usize = 150;
+
 /// Rewrite one message in place as a `Compress` stand-in. Deterministic and
 /// non-destructive by construction: it only ever touches `message` itself,
 /// never the transcript it came from.

@@ -135,6 +135,11 @@ pub struct RetrievalOptions {
     /// memory: its history is already in hand, so retrieving it again would
     /// only duplicate what the caller is about to carry over.
     pub exclude_sessions: Vec<String>,
+    /// Leave out every session that is a copy or fork of this conversation,
+    /// not only the one id: a handoff, a resumed snapshot, or a forked chat
+    /// carries the same conversation under a new id, and retrieving from it
+    /// would find the very thing being continued (and quote it back).
+    pub exclude_copies_of: Option<ConversationFingerprint>,
     /// Drop chunks scoring under this (0..1).
     pub min_relevance: f32,
     /// Return each session's best chunk only (`true`) or several (`false`).
@@ -149,10 +154,68 @@ impl Default for RetrievalOptions {
             harnesses: None,
             cwd: None,
             exclude_sessions: Vec::new(),
+            exclude_copies_of: None,
             min_relevance: MIN_RELEVANCE,
             one_chunk_per_session: false,
         }
     }
+}
+
+/// What identifies a conversation across its copies: the text of its first
+/// user message, or its title together with its working directory.
+///
+/// Copies made by `continue`, resumed snapshots, and forks keep the opening
+/// message (and usually the title), so either match marks a session as the
+/// same conversation. Two unrelated sessions share a title *and* a directory
+/// rarely enough that excluding on it is the safer error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConversationFingerprint {
+    /// First user text message, trimmed.
+    pub first_user_text: Option<String>,
+    /// The session title, when it has one.
+    pub title: Option<String>,
+    /// The directory the session was recorded in.
+    pub cwd: Option<String>,
+}
+
+impl ConversationFingerprint {
+    /// The fingerprint of a loaded transcript.
+    #[must_use]
+    pub fn of(transcript: &Transcript<Common>) -> Self {
+        ConversationFingerprint {
+            first_user_text: first_user_text(transcript),
+            title: transcript
+                .meta
+                .title
+                .clone()
+                .filter(|t| !t.trim().is_empty()),
+            cwd: transcript.meta.cwd.clone().filter(|c| !c.is_empty()),
+        }
+    }
+
+    /// Whether `other` is a copy or fork of the conversation this describes.
+    #[must_use]
+    pub fn matches(&self, other: &Transcript<Common>) -> bool {
+        let first = first_user_text(other);
+        if self.first_user_text.is_some() && first == self.first_user_text {
+            return true;
+        }
+        let title = other.meta.title.as_ref().filter(|t| !t.trim().is_empty());
+        let cwd = other.meta.cwd.as_ref().filter(|c| !c.is_empty());
+        self.title.is_some() && title == self.title.as_ref() && cwd == self.cwd.as_ref()
+    }
+}
+
+fn first_user_text(transcript: &Transcript<Common>) -> Option<String> {
+    transcript
+        .body
+        .iter()
+        .filter(|message| message.role == Role::User)
+        .flat_map(|message| &message.content)
+        .find_map(|block| match block {
+            Block::Text { text } if !text.trim().is_empty() => Some(text.trim().to_string()),
+            _ => None,
+        })
 }
 
 /// Chunks returned when [`RetrievalOptions`] is default: small enough to
@@ -329,6 +392,13 @@ pub fn retrieve_local(
         // A parse failure skips the session rather than failing retrieval:
         // history that cannot render cannot rank either.
         if let Ok(common) = session.read() {
+            if options
+                .exclude_copies_of
+                .as_ref()
+                .is_some_and(|fingerprint| fingerprint.matches(&common))
+            {
+                continue;
+            }
             let key = DocKey {
                 harness: session.harness,
                 id: session.meta.id.clone(),
@@ -621,7 +691,8 @@ impl<S: jev::ContextScorer> jev::ContextScorer for RelevanceScorer<'_, S> {
 /// (always fully important), message `i + 1` carries the `i`-th least
 /// relevant chunk. This mapping and `assemble` must stay in sync; both
 /// live in this module so the coupling has one home.
-fn relevance_by_message_index(chunks: &[RetrievedContext]) -> HashMap<usize, f32> {
+#[must_use]
+pub fn relevance_by_message_index(chunks: &[RetrievedContext]) -> HashMap<usize, f32> {
     let mut ascending: Vec<f32> = chunks.iter().map(|chunk| chunk.relevance).collect();
     ascending.sort_by(f32::total_cmp);
     let mut by_index = HashMap::with_capacity(ascending.len() + 1);
@@ -1138,6 +1209,9 @@ impl<S: jev::ContextScorer> jev::ContextScorer for TaskScorer<'_, S> {
                 jev::ContextDecision::KeepFull
             } else if relevance < TASK_DROP_BELOW {
                 jev::ContextDecision::Drop
+            } else if item.token_cost < jev::MIN_COMPRESS_TOKENS {
+                // Too short for a stand-in to be smaller than the message.
+                jev::ContextDecision::KeepFull
             } else {
                 jev::ContextDecision::Compress
             };
@@ -1661,7 +1735,10 @@ mod task_scoring_tests {
         let source = transcript(vec![
             text_message(Role::User, "Fix the Redis timeout bug."),
             text_message(Role::Assistant, "Unrelated chit-chat about lunch."),
-            text_message(Role::Assistant, "Half-related note about the pool."),
+            text_message(
+                Role::Assistant,
+                &"Half-related note about the pool. ".repeat(25),
+            ),
             call,
             result,
         ]);
@@ -1678,6 +1755,24 @@ mod task_scoring_tests {
         assert_eq!(allocated.items[2].decision, jev::ContextDecision::Compress);
         assert_eq!(allocated.items[4].decision, jev::ContextDecision::KeepFull);
         jev::apply(&source, &allocated).expect("the plan applies");
+    }
+
+    /// A mid-scored message too short for a stand-in to be smaller than it
+    /// is kept whole: folding it would only add a reference line.
+    #[test]
+    fn short_mid_scored_messages_are_kept_whole_not_folded() {
+        let source = transcript(vec![
+            text_message(Role::User, "Fix the Redis timeout bug."),
+            text_message(Role::Assistant, "Short half-related note about the pool."),
+        ]);
+        let relevance = HashMap::from([(1usize, 0.5)]);
+        let base = jev::DeterministicScorer::default();
+        let planned = jev::plan_with(&source, None, &TaskScorer::new(&base, relevance));
+        assert_eq!(planned.items[1].decision, jev::ContextDecision::KeepFull);
+        // A short *irrelevant* message is still dropped: that does save tokens.
+        let relevance = HashMap::from([(1usize, 0.02)]);
+        let planned = jev::plan_with(&source, None, &TaskScorer::new(&base, relevance));
+        assert_eq!(planned.items[1].decision, jev::ContextDecision::Drop);
     }
 
     /// When Jev drops one half of a tool pair but keeps the other, the

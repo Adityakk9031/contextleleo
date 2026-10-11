@@ -1367,6 +1367,7 @@ mod jev_continue_tests {
     fn prepended_origins_map_back_to_stored_sessions() {
         let map = Prepended {
             count: 2,
+            relevance: std::collections::HashMap::new(),
             source_id: "current".into(),
             origins: vec![
                 ("current".into(), 0),
@@ -1378,6 +1379,77 @@ mod jev_continue_tests {
         assert_eq!(map.origin(2), ("earlier".to_string(), 3));
         assert_eq!(map.origin(3), ("current".to_string(), 0));
         assert_eq!(map.origin(9), ("current".to_string(), 6));
+    }
+
+    /// With `--retrieve --jev --budget`, a retrieved chunk's Jev score
+    /// decides what a tight budget shrinks: the weaker chunk is folded to a
+    /// stand-in, the stronger one stays whole.
+    #[test]
+    fn retrieved_chunks_are_ranked_by_their_jev_score_when_trimming() {
+        let chunk = |label: &str| Message {
+            role: Role::Assistant,
+            content: vec![Block::Text {
+                text: format!("[retrieved {label}]\n{}", "background detail. ".repeat(160)),
+            }],
+            timestamp: chrono::Utc::now(),
+            model: None,
+            stop_reason: None,
+            usage: None,
+        };
+        let ask = |text: &str| Message {
+            role: Role::User,
+            content: vec![Block::Text { text: text.into() }],
+            timestamp: chrono::Utc::now(),
+            model: None,
+            stop_reason: None,
+            usage: None,
+        };
+        let meta = jev_transcript().meta;
+        let mut copy = Transcript::new(
+            meta,
+            vec![
+                ask("[context request]\nfix redis"),
+                chunk("weak"),
+                chunk("strong"),
+                ask("go"),
+            ],
+        );
+        let prepended = Prepended {
+            count: 2,
+            relevance: std::collections::HashMap::from([(0, 1.0), (1, 0.55), (2, 0.95)]),
+            source_id: "current".into(),
+            origins: vec![
+                ("current".into(), 0),
+                ("earlier".into(), 4),
+                ("earlier".into(), 9),
+            ],
+        };
+        apply_jev_with(&mut copy, Some(Some(900)), Some(&prepended), None).unwrap();
+
+        let text_of = |index: usize| -> String {
+            copy.body[index]
+                .content
+                .iter()
+                .filter_map(|block| match block {
+                    Block::Text { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert!(
+            text_of(1).contains("jev: compressed"),
+            "weak chunk folds first"
+        );
+        assert!(
+            text_of(1).contains("session `earlier` message 4"),
+            "{}",
+            text_of(1)
+        );
+        assert!(
+            !text_of(2).contains("jev: compressed"),
+            "strong chunk stays whole"
+        );
     }
 
     /// `--explain` previews are one line, capped, and never show a
@@ -1946,6 +2018,9 @@ type JevPlan = Option<Option<usize>>;
 /// stand-ins point at sessions `view` can open instead of at the copy.
 struct Prepended {
     count: usize,
+    /// Retrieval relevance (Jev's score) per prepended message index, so the
+    /// trimming pass ranks retrieved chunks by what Jev said about them.
+    relevance: std::collections::HashMap<usize, f32>,
     source_id: String,
     /// `(session, message)` per prepended message, in body order.
     origins: Vec<(String, usize)>,
@@ -1992,10 +2067,20 @@ fn apply_jev_with(
     };
     let (planned, scored) = match task {
         Some(task) => {
-            let (plan, relevance) = task_plan(common, budget, task.text, prepended)?;
-            (plan, Some(relevance))
+            let (plan, relevance, judged) = task_plan(common, budget, task.text, prepended)?;
+            (plan, Some((relevance, judged)))
         }
-        None => (jev::plan(common, budget), None),
+        // Retrieved chunks are ranked by Jev's retrieval score when a budget
+        // forces cuts; without any, the default rules decide as before.
+        None => match prepended.filter(|map| !map.relevance.is_empty()) {
+            Some(map) => {
+                let base = jev::DeterministicScorer::default();
+                let scorer =
+                    contextleleo::retrieval::RelevanceScorer::new(&base, map.relevance.clone());
+                (jev::plan_with(common, budget, &scorer), None)
+            }
+            None => (jev::plan(common, budget), None),
+        },
     };
     let (mut allocated, mut report) = jev::allocate(common, &planned);
     if report.status == jev::AllocationStatus::OverBudget {
@@ -2023,11 +2108,10 @@ fn apply_jev_with(
             );
         }
     }
-    if let Some(relevance) = &scored {
+    if let Some((relevance, judged)) = &scored {
         eprintln!(
-            "{} Jev scored {} messages ({} kept full, {} compressed, {} dropped)",
+            "{} Jev scored {judged} messages ({} kept full, {} compressed, {} dropped)",
             style::dim("task-aware:", style::enabled_err()),
-            relevance.len(),
             report.counts[0],
             report.counts[1],
             report.counts[2],
@@ -2128,7 +2212,14 @@ fn task_plan(
     budget: Option<usize>,
     task: &str,
     prepended: Option<&Prepended>,
-) -> Result<(jev::ContextPlan, std::collections::HashMap<usize, f32>), String> {
+) -> Result<
+    (
+        jev::ContextPlan,
+        std::collections::HashMap<usize, f32>,
+        usize,
+    ),
+    String,
+> {
     use contextleleo::retrieval::{TaskScorer, jev_message_relevance};
     let client = jev_client()?;
     // Prepended messages lead the body; the continued session's own
@@ -2140,15 +2231,24 @@ fn task_plan(
         Transcript::new(common.meta.clone(), common.body[offset..].to_vec());
     let relevance = jev_message_relevance(&client, task, &own).map_err(|e| e.to_string())?;
     // Re-key the tail's indices back into the assembled transcript.
-    let relevance: std::collections::HashMap<usize, f32> = relevance
+    let judged = relevance.len();
+    let mut relevance: std::collections::HashMap<usize, f32> = relevance
         .into_iter()
         .map(|(index, value)| (index + offset, value))
         .collect();
+    // Retrieved chunks were already judged by Jev at retrieval; that score
+    // is their relevance here, so the best-scored chunks are kept and the
+    // weakest shrink first. (The leading task message is a user turn and
+    // stays protected whatever it maps to.)
+    if let Some(map) = prepended {
+        relevance.extend(map.relevance.iter().map(|(index, value)| (*index, *value)));
+    }
     let base = contextleleo::jev::DeterministicScorer::default();
     let scorer = TaskScorer::new(&base, relevance.clone());
     Ok((
         contextleleo::jev::plan_with(common, budget, &scorer),
         relevance,
+        judged,
     ))
 }
 
@@ -2177,12 +2277,16 @@ fn prepend_retrieved(
     let client = jev_client()?;
     let cwd = common.meta.cwd.clone();
     let source_id = common.meta.id.clone();
+    // Copies and forks of this conversation (an earlier handoff, a resumed
+    // snapshot) are not other sessions' memory either.
+    let copies = Some(contextleleo::retrieval::ConversationFingerprint::of(common));
     let options = RetrievalOptions {
         max_chunks,
         max_tokens,
         harnesses: None,
         cwd: cwd.clone(),
         exclude_sessions: vec![source_id.clone()],
+        exclude_copies_of: copies.clone(),
         ..RetrievalOptions::default()
     };
     // Gather a broad candidate set locally, then let the Jev API decide
@@ -2194,10 +2298,12 @@ fn prepend_retrieved(
         harnesses: None,
         cwd,
         exclude_sessions: vec![source_id.clone()],
+        exclude_copies_of: copies,
         ..RetrievalOptions::default()
     };
     let none = || Prepended {
         count: 0,
+        relevance: std::collections::HashMap::new(),
         source_id: source_id.clone(),
         origins: Vec::new(),
     };
@@ -2227,6 +2333,7 @@ fn prepend_retrieved(
     origins.extend(contextleleo::retrieval::chunk_origins(&chunks));
     Ok(Prepended {
         count,
+        relevance: contextleleo::retrieval::relevance_by_message_index(&chunks),
         source_id,
         origins,
     })
