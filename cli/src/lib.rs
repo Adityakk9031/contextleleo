@@ -214,12 +214,18 @@ pub enum SessionCommand {
         budget: Option<usize>,
         /// Retrieve relevant historical context for this task/query first,
         /// prepend it to the handoff, then let --jev optimize the whole to
-        /// the budget. Requires --jev. The retrieved context is traceable
-        /// (each chunk names its session#message) and no history is
-        /// modified. Candidates are ranked by the Jev API: set
-        /// `JEV_API_KEY` (or `TYPESAFE_API_KEY`).
+        /// the budget. Requires --jev. It searches the sessions of every
+        /// project on this machine, not only this folder, so a fix you made
+        /// in another repo is found; each chunk names its project and its
+        /// session#message, and no history is modified. Candidates are ranked
+        /// by the Jev API: run `contextleleo setup`, or set `JEV_API_KEY`
+        /// (or `TYPESAFE_API_KEY`).
         #[arg(long, value_name = "QUERY", requires = "jev")]
         retrieve: Option<String>,
+        /// With --retrieve: search only sessions recorded in this folder
+        /// instead of every project.
+        #[arg(long, requires = "retrieve")]
+        this_project_only: bool,
         /// Score this handoff's messages for relevance to TEXT — what the
         /// next agent is about to do — with the Jev API, and let those
         /// scores steer --jev's keep/compress/drop decisions instead of the
@@ -509,6 +515,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             jev,
             budget,
             retrieve,
+            this_project_only,
             task,
             explain,
             metadata,
@@ -521,6 +528,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             jev,
             budget,
             retrieve.as_deref(),
+            this_project_only,
             task.as_deref(),
             explain,
             &metadata,
@@ -1366,7 +1374,7 @@ mod jev_continue_tests {
     #[test]
     fn prepended_origins_map_back_to_stored_sessions() {
         let map = Prepended {
-            count: 2,
+            summary: String::new(),
             relevance: std::collections::HashMap::new(),
             source_id: "current".into(),
             origins: vec![
@@ -1415,7 +1423,7 @@ mod jev_continue_tests {
             ],
         );
         let prepended = Prepended {
-            count: 2,
+            summary: String::new(),
             relevance: std::collections::HashMap::from([(0, 1.0), (1, 0.55), (2, 0.95)]),
             source_id: "current".into(),
             origins: vec![
@@ -1449,6 +1457,47 @@ mod jev_continue_tests {
         assert!(
             !text_of(2).contains("jev: compressed"),
             "strong chunk stays whole"
+        );
+    }
+
+    /// The retrieval summary says which projects the context came from, and
+    /// separates other projects from this one.
+    #[test]
+    fn the_retrieval_summary_names_other_projects_and_this_one() {
+        let chunk = |project: Option<&str>| contextleleo::retrieval::RetrievedContext {
+            source: contextleleo::retrieval::SourceReference {
+                session: contextleleo::search::DocKey {
+                    harness: contextleleo::HarnessId::Simple,
+                    id: "s".into(),
+                    source: None,
+                },
+                message_index: Some(0),
+            },
+            content: "c".into(),
+            relevance: 0.9,
+            signals: Vec::new(),
+            session_time: chrono::Utc::now(),
+            project: project.map(str::to_string),
+        };
+        let chunks = vec![
+            chunk(Some("liquiguard-somnia")),
+            chunk(Some("liquiguard-somnia")),
+            chunk(Some("txcript-main")),
+            chunk(Some("jev cli")),
+        ];
+        let line = retrieval_summary(&chunks, Some("txcript-main"));
+        assert_eq!(
+            line,
+            "retrieved 4 historical context chunks — from other projects: \
+             liquiguard-somnia ×2, jev cli ×1; this project: txcript-main ×1"
+        );
+        assert_eq!(
+            retrieval_summary(&chunks[..1], Some("txcript-main")),
+            "retrieved 1 historical context chunk — from other projects: liquiguard-somnia ×1"
+        );
+        assert_eq!(
+            retrieval_summary(&chunks[2..3], Some("txcript-main")),
+            "retrieved 1 historical context chunk — this project: txcript-main ×1"
         );
     }
 
@@ -1836,7 +1885,7 @@ fn crop_loaded(
     Ok(ExitCode::SUCCESS)
 }
 
-#[allow(clippy::too_many_arguments)] // the continue surface is one flat dispatch
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)] // the continue surface is one flat dispatch
 fn cmd_continue(
     id: &str,
     with: Option<HarnessId>,
@@ -1846,11 +1895,16 @@ fn cmd_continue(
     jev_plan: bool,
     budget: Option<usize>,
     retrieve: Option<&str>,
+    this_project_only: bool,
     task: Option<&str>,
     explain: bool,
     metadata_specs: &[String],
 ) -> Result<ExitCode, String> {
     let task = task.map(|text| TaskSpec { text, explain });
+    let retrieve = retrieve.map(|query| RetrieveSpec {
+        query,
+        this_project_only,
+    });
     let metadata = parse_metadata_specs(metadata_specs)?;
     let metadata =
         (!metadata.as_object().is_some_and(serde_json::Map::is_empty)).then_some(metadata);
@@ -2017,7 +2071,8 @@ type JevPlan = Option<Option<usize>>;
 /// Where the messages of a retrieval-prepended copy really came from, so
 /// stand-ins point at sessions `view` can open instead of at the copy.
 struct Prepended {
-    count: usize,
+    /// The line reported after retrieval: how many chunks, from which projects.
+    summary: String,
     /// Retrieval relevance (Jev's score) per prepended message index, so the
     /// trimming pass ranks retrieved chunks by what Jev said about them.
     relevance: std::collections::HashMap<usize, f32>,
@@ -2036,6 +2091,63 @@ impl Prepended {
             ),
         }
     }
+}
+
+/// "retrieved 4 historical context chunks — from other projects: liquiguard-somnia ×3, jev cli ×1;
+/// this project ×0" — says where the context came from, so a fix recorded in
+/// another repo is never mistaken for this one's history.
+fn retrieval_summary(
+    chunks: &[contextleleo::retrieval::RetrievedContext],
+    here: Option<&str>,
+) -> String {
+    use std::fmt::Write as _;
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    for chunk in chunks {
+        let name = chunk
+            .project
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        match counts.iter_mut().find(|(known, _)| *known == name) {
+            Some((_, n)) => *n += 1,
+            None => counts.push((name, 1)),
+        }
+    }
+    let total = chunks.len();
+    let (same, other): (Vec<_>, Vec<_>) = counts
+        .into_iter()
+        .partition(|(name, _)| Some(name.as_str()) == here);
+    let list = |items: &[(String, usize)]| {
+        items
+            .iter()
+            .map(|(name, n)| format!("{name} ×{n}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut line = format!(
+        "retrieved {total} historical context chunk{}",
+        if total == 1 { "" } else { "s" }
+    );
+    if !other.is_empty() {
+        let _ = write!(line, " — from other projects: {}", list(&other));
+    }
+    if !same.is_empty() {
+        let _ = write!(
+            line,
+            "{} this project: {}",
+            if other.is_empty() { " —" } else { ";" },
+            list(&same)
+        );
+    }
+    line
+}
+
+/// The `--retrieve` request: the question, and whether to stay inside the
+/// current project folder (`--this-project-only`) instead of searching every
+/// project's sessions.
+#[derive(Clone, Copy)]
+struct RetrieveSpec<'a> {
+    query: &'a str,
+    this_project_only: bool,
 }
 
 /// The `--task` request: what the next agent will do, and whether to print
@@ -2265,6 +2377,7 @@ fn task_plan(
 fn prepend_retrieved(
     common: &mut Transcript<Common>,
     query: &str,
+    this_project_only: bool,
     max_chunks: usize,
     max_tokens: Option<usize>,
 ) -> Result<Prepended, String> {
@@ -2275,7 +2388,19 @@ fn prepend_retrieved(
     // stop here with the configuration error rather than silently
     // falling back to local scores.
     let client = jev_client()?;
-    let cwd = common.meta.cwd.clone();
+    // Every project's sessions are searched unless the caller asked to stay
+    // in this folder: a fix recorded in another repo is exactly what a
+    // retrieval is for, and Jev (not the folder) decides what is relevant.
+    let cwd = if this_project_only {
+        common.meta.cwd.clone()
+    } else {
+        None
+    };
+    let here = common
+        .meta
+        .cwd
+        .as_deref()
+        .and_then(contextleleo::retrieval::project_label);
     let source_id = common.meta.id.clone();
     // Copies and forks of this conversation (an earlier handoff, a resumed
     // snapshot) are not other sessions' memory either.
@@ -2302,7 +2427,7 @@ fn prepend_retrieved(
         ..RetrievalOptions::default()
     };
     let none = || Prepended {
-        count: 0,
+        summary: "retrieved 0 historical context chunks".to_string(),
         relevance: std::collections::HashMap::new(),
         source_id: source_id.clone(),
         origins: Vec::new(),
@@ -2322,7 +2447,6 @@ fn prepend_retrieved(
         return Ok(none());
     }
     let assembled = contextleleo::retrieval::assemble(&chunks, query);
-    let count = chunks.len();
     // Prepend the assembled messages (the query ask plus one per chunk),
     // before the session's own history.
     let mut merged = assembled.body;
@@ -2332,7 +2456,7 @@ fn prepend_retrieved(
     let mut origins = vec![(source_id.clone(), 0)];
     origins.extend(contextleleo::retrieval::chunk_origins(&chunks));
     Ok(Prepended {
-        count,
+        summary: retrieval_summary(&chunks, here.as_deref()),
         relevance: contextleleo::retrieval::relevance_by_message_index(&chunks),
         source_id,
         origins,
@@ -2735,7 +2859,7 @@ fn continue_session(
     out: Option<&std::path::Path>,
     resume: bool,
     jev: JevPlan,
-    retrieve: Option<&str>,
+    retrieve: Option<RetrieveSpec<'_>>,
     task: Option<TaskSpec<'_>>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
@@ -2756,19 +2880,16 @@ fn continue_session(
         (None, false) => {
             let mut common = found.read().map_err(|e| e.to_string())?;
             let mut prepended = None;
-            if let Some(task) = retrieve {
+            if let Some(spec) = retrieve {
                 let found_chunks = prepend_retrieved(
                     &mut common,
-                    task,
+                    spec.query,
+                    spec.this_project_only,
                     contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
                     None,
                 )?;
-                let n = found_chunks.count;
+                println!("{}", found_chunks.summary);
                 prepended = Some(found_chunks);
-                println!(
-                    "retrieved {n} historical context chunk{s}",
-                    s = if n == 1 { "" } else { "s" }
-                );
             }
             apply_jev_with(&mut common, jev, prepended.as_ref(), task)?;
             fresh_identity(&mut common, target, out);
@@ -2779,19 +2900,16 @@ fn continue_session(
             let common = found.read().map_err(|e| e.to_string())?;
             let mut copy = fragment::sliced(&common, req)?;
             let mut prepended = None;
-            if let Some(task) = retrieve {
+            if let Some(spec) = retrieve {
                 let found_chunks = prepend_retrieved(
                     &mut copy,
-                    task,
+                    spec.query,
+                    spec.this_project_only,
                     contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
                     None,
                 )?;
-                let n = found_chunks.count;
+                println!("{}", found_chunks.summary);
                 prepended = Some(found_chunks);
-                println!(
-                    "retrieved {n} historical context chunk{s}",
-                    s = if n == 1 { "" } else { "s" }
-                );
             }
             apply_jev_with(&mut copy, jev, prepended.as_ref(), task)?;
             fresh_identity(&mut copy, target, out);
@@ -2812,7 +2930,7 @@ fn continue_loaded_remote(
     out: Option<&std::path::Path>,
     resume: bool,
     jev: JevPlan,
-    retrieve: Option<&str>,
+    retrieve: Option<RetrieveSpec<'_>>,
     task: Option<TaskSpec<'_>>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<ExitCode, String> {
@@ -2822,19 +2940,16 @@ fn continue_loaded_remote(
         None => common,
     };
     let mut prepended = None;
-    if let Some(task) = retrieve {
+    if let Some(spec) = retrieve {
         let found_chunks = prepend_retrieved(
             &mut copy,
-            task,
+            spec.query,
+            spec.this_project_only,
             contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
             None,
         )?;
-        let n = found_chunks.count;
+        println!("{}", found_chunks.summary);
         prepended = Some(found_chunks);
-        println!(
-            "retrieved {n} historical context chunk{s}",
-            s = if n == 1 { "" } else { "s" }
-        );
     }
     apply_jev_with(&mut copy, jev, prepended.as_ref(), task)?;
     fresh_identity(&mut copy, target, out);

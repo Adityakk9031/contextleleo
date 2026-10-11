@@ -191,6 +191,62 @@ fn an_excluded_session_is_not_its_own_memory() {
     );
 }
 
+/// With no folder restriction, a fix recorded in another project is found,
+/// and the chunk carries that project's name; restricted to one folder, the
+/// same fix is out of reach.
+#[test]
+fn retrieval_reaches_other_projects_and_names_them() {
+    let here = Transcript::new(
+        meta("here", 1, "/work/txcript-main"),
+        vec![text_message(
+            Role::User,
+            "ssl handshake error in the shell",
+            1,
+        )],
+    );
+    let other = Transcript::new(
+        meta("there", 30, "/work/liquiguard-somnia"),
+        vec![
+            text_message(Role::User, "ssl handshake error again", 1),
+            text_message(
+                Role::Assistant,
+                "Fixed the ssl handshake error by pinning the tls version in the shell wrapper.",
+                2,
+            ),
+        ],
+    );
+    let index = index_of(&[here, other]);
+    let query = "ssl handshake error tls version shell";
+
+    let everywhere = retrieve(&index, query, &RetrievalOptions::default());
+    let from_other: Vec<_> = everywhere
+        .iter()
+        .filter(|chunk| chunk.source.session.id == "there")
+        .collect();
+    assert!(!from_other.is_empty(), "the other project is searched");
+    assert!(
+        from_other
+            .iter()
+            .all(|chunk| chunk.project.as_deref() == Some("liquiguard-somnia")),
+        "{from_other:?}"
+    );
+
+    let restricted = retrieve(
+        &index,
+        query,
+        &RetrievalOptions {
+            cwd: Some("/work/txcript-main".to_string()),
+            ..RetrievalOptions::default()
+        },
+    );
+    assert!(
+        restricted
+            .iter()
+            .all(|chunk| chunk.source.session.id != "there"),
+        "a folder restriction keeps the search inside that project"
+    );
+}
+
 /// A copy or fork of the conversation being continued is not another
 /// session's memory: it matches on the opening message, or on title plus
 /// directory — and an unrelated session matches on neither.
@@ -434,6 +490,7 @@ fn assembly_is_traceable_and_carries_the_query() {
         relevance: 0.9,
         signals: vec![Signal::Keyword],
         session_time: ts(0),
+        project: Some("liquiguard-somnia".to_string()),
     }];
     let assembled = assemble(&chunks, "What configuration did we change?");
     assert_eq!(assembled.body.len(), 2);
@@ -445,6 +502,10 @@ fn assembly_is_traceable_and_carries_the_query() {
         "source locator present"
     );
     assert!(text.contains("maxConnections was increased from 20 to 100."));
+    assert!(
+        text.contains("project liquiguard-somnia"),
+        "a chunk from another project names it: {text}"
+    );
     assert!(
         text.contains(QUOTED_HISTORY_NOTE),
         "quoted history says so: {text}"

@@ -84,6 +84,22 @@ pub struct RetrievedContext {
     /// The session's own timestamp (recency ranking uses it; the optimizer
     /// timestamps the assembled message with it).
     pub session_time: DateTime<Utc>,
+    /// The folder the source session was recorded in, so a chunk that comes
+    /// from another project says so ([`project_label`]).
+    #[serde(default)]
+    pub project: Option<String>,
+}
+
+/// A short, readable name for a project folder: its last path component,
+/// with URL escapes (`jev%20cli`) undone. `None` for an empty path.
+#[must_use]
+pub fn project_label(cwd: &str) -> Option<String> {
+    let name = cwd
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()?;
+    let name = name.replace("%20", " ");
+    (!name.trim().is_empty()).then_some(name)
 }
 
 impl RetrievedContext {
@@ -605,6 +621,7 @@ fn rank_hits(
                 relevance: relevance.min(1.0),
                 signals,
                 session_time: meta.timestamp,
+                project: meta.cwd.as_deref().and_then(project_label),
             }
         })
         .collect()
@@ -755,11 +772,16 @@ pub fn assemble(chunks: &[RetrievedContext], query: &str) -> Transcript<Common> 
     let total = ranked.len();
     let mut messages = Vec::with_capacity(chunks.len() + 1);
     for (n, chunk) in ranked.into_iter().enumerate() {
+        let project = chunk
+            .project
+            .as_ref()
+            .map_or_else(String::new, |name| format!(" · project {name}"));
         let text = format!(
-            "[retrieved {} of {} · source {} · relevance {:.2}]\n{}\n{}",
+            "[retrieved {} of {} · source {}{} · relevance {:.2}]\n{}\n{}",
             n + 1,
             total,
             chunk.source.locator(),
+            project,
             chunk.relevance,
             QUOTED_HISTORY_NOTE,
             chunk.content,
@@ -1253,6 +1275,7 @@ mod jev_rank_tests {
             relevance,
             signals: Vec::new(),
             session_time: Utc::now(),
+            project: None,
         }
     }
 

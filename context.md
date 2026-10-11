@@ -195,7 +195,7 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 589 passing, 0 failing (this is the verified state)
+## 9. Tests — 591 passing, 0 failing (this is the verified state)
 
 **Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 125 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
@@ -801,3 +801,25 @@ its budget path can still fold short messages. Tests: `short_mid_scored_messages
 view with contextleleo view …#N+1]` and native tool-call rendering; the Freebuff app lists handoff
 threads (its own damaged thread showed empty because of §25). Antigravity lists the conversation under
 *Conversation History* (project `default-cli-project`), not under a sidebar project.
+
+## 27. Retrieval reaches every project by default (2026-10-11)
+
+**Why.** The real use is "I hit this bug, and fixed the same thing a month ago in another repo": retrieve that
+fix, open a new thread *in this repo*, and carry on (which also covers "switch agents in the same repo").
+`continue --retrieve` had been restricted to sessions recorded in the same folder, so it could not reach the
+fix; `context` already searched everything.
+
+**What changed.** `--retrieve` now searches every project (the index was always built from all sessions; only
+the folder filter changed). `--this-project-only` restores the old scope. `RetrievedContext.project` (the
+source session's folder, `retrieval::project_label`: last path component, `%20` undone) is set at ranking;
+`assemble` writes `· project <name> ·` into each chunk header, and the CLI prints where the context came from
+(`retrieval_summary`: other projects vs. this project). `RetrieveSpec { query, this_project_only }` threads the
+choice through the continue paths. Tests: `retrieval_reaches_other_projects_and_names_them`,
+`the_retrieval_summary_names_other_projects_and_this_one`, and the assembly test checks the project label.
+
+**Verified live** (real Jev; output redirected to a temp Antigravity root, then removed): continuing this
+`txcript-main` chat with `--retrieve "sentinel guard bug hedge vault stays protected audit fix"` returned
+12 chunks, all from `liquiguard-somnia`, each headed `· project liquiguard-somnia ·` (relevance 0.74–0.79);
+the new session keeps `txcript-main` as its folder. Suite: 591 passed / 0 failed.
+
+**Caveat.** A fix from another project may not apply here; chunks stay labelled quoted history, reference only.

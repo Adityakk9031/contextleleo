@@ -108,7 +108,7 @@ Without a key, `context` and `continue --retrieve` stop with a configuration err
 `contextleleo setup`; every other command (`list`, `view`, `query`, `export`, plain `continue`) needs no key.
 Only bounded excerpts of the candidates leave your machine, never the full history. Add `--budget` to
 run the assembled context through Jev's optimizer, which keeps, compresses, or drops each chunk
-to fit. Retrieval is read-only: no stored session is modified, and every kept chunk stays
+to fit. `--retrieve` searches the sessions of **every project** on this machine, so a bug you fixed last month in another repo is found while you work on this one; each chunk is labelled with its project and its `session#message`, and `--this-project-only` limits the search to the current folder. Retrieval is read-only: no stored session is modified, and every kept chunk stays
 traceable to its original. The same lookup can lead a handoff — `contextleleo continue
 <session-id> --with codex --jev --retrieve "task"` prepends the retrieved context before Jev
 optimizes the whole to `--budget`.
