@@ -3062,6 +3062,23 @@ fn continue_metadata(
         // A folder that was moved or deleted can still be a project the
         // desktop app lists, and the app matches projects by this path, so an
         // absolute path that no longer exists is accepted (with a note).
+        // A bare name is a project the Antigravity app lists (`--in
+        // beautiful-nobel`): use that project's folder.
+        let named = (!dir.is_absolute() && !dir.exists())
+            .then(|| dir.to_str())
+            .flatten()
+            .and_then(|name| {
+                let root =
+                    contextleleo::harness::antigravity::AntigravityStore::default_root()?.root;
+                contextleleo::harness::antigravity::app_projects(&root)
+                    .into_iter()
+                    .find(|project| project.name.eq_ignore_ascii_case(name))
+            });
+        let dir = named.map_or_else(
+            || dir.to_path_buf(),
+            |project| PathBuf::from(project.folder),
+        );
+        let dir = dir.as_path();
         let dir = match dir.canonicalize() {
             Ok(dir) if dir.is_dir() => dir,
             _ if dir.is_absolute() => {
@@ -3075,8 +3092,8 @@ fn continue_metadata(
             }
             _ => {
                 return Err(format!(
-                    "--in {}: not an existing folder (give an absolute path for one that \
-                     no longer exists)",
+                    "--in {}: not an existing folder or Antigravity project name (give an \
+                     absolute path for a folder that no longer exists)",
                     dir.display()
                 ));
             }

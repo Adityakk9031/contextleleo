@@ -736,6 +736,47 @@ fn a_conversation_joins_the_apps_project_for_its_folder() {
     );
 }
 
+/// A project made in the app is in its registry before it has any
+/// conversation, so a handoff for that folder joins it even with no index.
+#[test]
+#[cfg(feature = "opencode")]
+fn a_brand_new_app_project_is_found_in_the_registry_before_it_has_conversations() {
+    let gemini = tempfile::tempdir().unwrap();
+    let registry = gemini.path().join("config").join("projects");
+    std::fs::create_dir_all(&registry).unwrap();
+    std::fs::write(
+        registry.join("82286fa7.json"),
+        serde_json::json!({
+            "id": "82286fa7-new-project",
+            "name": "beautiful-nobel",
+            "projectResources": {"resources": [
+                {"gitFolder": {"folderUri": "file:///Users/x/Documents/antigravity/beautiful-nobel"}}
+            ]},
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let root = gemini.path().join("antigravity");
+
+    let projects = antigravity::app_projects(&root);
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].name, "beautiful-nobel");
+    assert_eq!(
+        projects[0].folder,
+        "/Users/x/Documents/antigravity/beautiful-nobel"
+    );
+    // No index file at all, and still found; a trailing slash does not matter.
+    assert_eq!(
+        antigravity::app_project_id(&root, "/Users/x/Documents/antigravity/beautiful-nobel/")
+            .as_deref(),
+        Some("82286fa7-new-project")
+    );
+    assert_eq!(
+        antigravity::app_project_id(&root, "/Users/x/elsewhere"),
+        None
+    );
+}
+
 #[test]
 fn codec_fixpoint_through_common_loses_nothing() {
     let original = fixpoint_common();

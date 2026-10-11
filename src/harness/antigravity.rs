@@ -1792,15 +1792,91 @@ pub fn app_owns_session_list(root: &Path) -> bool {
     root.join(APP_INDEX_FILE).is_file()
 }
 
-/// The desktop app's own project id for the workspace folder `cwd`, read from
-/// its conversation index under `root` — `None` when the root has no index,
-/// the folder was never opened in the app, or only the CLI default is known.
+/// One project of the desktop app's registry: what the sidebar groups
+/// conversations under.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppProject {
+    /// The id the app stamps on every conversation of the project.
+    pub id: String,
+    /// The name the sidebar shows (`LicenseShield-AI`, `beautiful-nobel`).
+    pub name: String,
+    /// The project's folder, as a plain path (URL escapes undone). The folder
+    /// may no longer exist: the app keeps the project either way.
+    pub folder: String,
+}
+
+/// The projects the desktop app knows, from its registry
+/// (`<gemini>/config/projects/*.json`, a sibling of the data `root`). A project
+/// created in the app is listed here from the start, before it has a single
+/// conversation, which is why this — not the conversation index — is the
+/// authority. Empty when the registry is absent.
+#[must_use]
+pub fn app_projects(root: &Path) -> Vec<AppProject> {
+    let Some(dir) = root
+        .parent()
+        .map(|gemini| gemini.join("config").join("projects"))
+    else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut projects: Vec<AppProject> = entries
+        .flatten()
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+        .filter_map(|entry| {
+            let doc: Value =
+                serde_json::from_str(&std::fs::read_to_string(entry.path()).ok()?).ok()?;
+            let id = doc.get("id")?.as_str()?.to_string();
+            let name = doc.get("name")?.as_str()?.to_string();
+            let folder = doc
+                .get("projectResources")?
+                .get("resources")?
+                .as_array()?
+                .iter()
+                .find_map(|resource| {
+                    resource
+                        .as_object()?
+                        .values()
+                        .find_map(|kind| kind.get("folderUri")?.as_str())
+                })?;
+            Some(AppProject {
+                id,
+                name,
+                folder: strip_file_uri(folder).replace("%20", " "),
+            })
+        })
+        .collect();
+    projects.sort_by(|a, b| a.name.cmp(&b.name));
+    projects
+}
+
+/// `path` without a trailing separator, for comparing folders.
+#[cfg(feature = "opencode")]
+fn folder_key(path: &str) -> String {
+    strip_file_uri(path)
+        .replace("%20", " ")
+        .trim_end_matches('/')
+        .to_string()
+}
+
+/// The desktop app's own project id for the workspace folder `cwd` — from its
+/// project registry first, then from its conversation index under `root`.
+/// `None` when the folder was never opened in the app, or only the CLI default
+/// is known.
 ///
 /// The index stores workspace URIs percent-encoded (`jev%20cli`), so both the
-/// plain and the encoded spelling of the folder are tried.
+/// plain and the encoded spelling of the folder are tried there.
 #[cfg(feature = "opencode")]
 #[must_use]
 pub fn app_project_id(root: &Path, cwd: &str) -> Option<String> {
+    let wanted = folder_key(cwd);
+    if let Some(project) = app_projects(root)
+        .into_iter()
+        .find(|project| folder_key(&project.folder) == wanted)
+    {
+        return Some(project.id);
+    }
     let index = root.join(APP_INDEX_FILE);
     if !index.is_file() {
         return None;
