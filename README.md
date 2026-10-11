@@ -16,31 +16,38 @@
 
 ---
 
-## 🆚 How Is This Different from txcript and Skillsync?
+## 🆚 How Is This Different from txcript?
 
-All three start from the same idea: **agent sessions hold the context behind the context.** They differ in *what happens next*.
+contextleleo is built on **[txcript](https://github.com/skillsynchq/txcript)**, the open-source "Pandoc for AI chats" by the company **[Skillsync](https://github.com/skillsynchq)** (Apache-2.0). We took that codebase and added the missing half: not only *moving* a session between agents, but *deciding what the next agent actually needs*.
 
-- **[txcript](https://github.com/skillsynchq/txcript)** moves a *whole* conversation from one agent's format to another ("Pandoc for AI chats").
-- **[Skillsync](https://skillsync.com)** helps you *find* old context across your sessions while you work, and turns sessions into skills and memory.
-- **contextleleo** decides *which parts of one or many sessions the next agent actually needs*, shrinks the rest, and writes the result into that agent as a native session you can trace back to the originals.
+**txcript** reads and writes every agent's session format, so you can start a conversation in one agent and continue it in another. It moves the **whole** transcript.
 
-| | txcript | Skillsync *(as announced)* | **contextleleo** |
-| :--- | :--- | :--- | :--- |
-| **Core job** | Convert a session between agent formats | Search past sessions mid-prompt; build skills and memory | **Pick, score and shrink context for the next task, then hand it over** |
-| **Hand a session to another agent** | 🟢 Whole, as-is | — | 🟢 **Trimmed to what the next task needs** |
-| **Search across agents** | 🟢 Literal text search | 🟢 Hotkey search (Mac app) | 🟢 Local search **plus Jev yes/no** over every project |
-| **Jev relevance scoring** | ❌ | 🟢 For retrieval | 🟢 For retrieval **and** for the handoff's own messages (`--task`) |
-| **Shrinks the handoff** | ❌ Sends the full transcript | — | 🟢 Keep / shrink / drop to a token budget |
-| **Traceable stand-ins** | ❌ | — | 🟢 Every shrunk message links to `session#message` in the untouched original |
-| **Shows its work** | ❌ | — | 🟢 `--explain`: each candidate's score and why it was kept or ignored |
-| **Retrieval lands as a new session** under your project | ❌ | — | 🟢 Written natively; joins your project in Antigravity |
-| **Secrets masked on screen and on the wire** | — | — | 🟢 `NAME=********` |
-| **Interface** | Rust library · CLI · WASM | Mac app (CLI planned) | Rust library · CLI · MCP |
-| **Source** | 🟢 Open (Apache-2.0) | Early access | 🟢 Open (Apache-2.0) |
+**contextleleo** keeps all of that and adds a relevance layer on top: Jev scores what matters, rules shrink the rest, and every cut stays traceable to the original.
 
-*🟢 = yes, ❌ = no, — = not announced or not its focus. txcript's column is checked against its repository; Skillsync's is from its public announcement and website, not from running the product, so treat it as a summary and [open an issue](https://github.com/Adityakk9031/contextleleo/issues) if something is out of date.*
+| | txcript (original) | **contextleleo** (this project) |
+| :--- | :--- | :--- |
+| **Core job** | Convert a session between agent formats | Convert **and** pick, score and shrink context for the next task |
+| **Hand a session to another agent** | 🟢 The whole transcript, as-is | 🟢 The whole transcript, **or trimmed to what the next task needs** |
+| **Search** | 🟢 Literal text search (`query`) | 🟢 Literal search **plus Jev yes/no** across every project |
+| **Find an old fix in another project** | ❌ | 🟢 `--retrieve`: Jev scores ~64 candidates, keeps only the clearly relevant ones |
+| **Jev relevance scoring** | ❌ | 🟢 For retrieval **and** for the handoff's own messages (`--task`) |
+| **Shrinks the handoff** | ❌ Sends everything | 🟢 Keep / shrink / drop to a token budget |
+| **Traceable stand-ins** | ❌ | 🟢 Every shrunk message links to `session#message` in the untouched original |
+| **Shows its work** | ❌ | 🟢 `--explain`: each candidate's score and why it was kept or ignored |
+| **Result lands under your project** | 🟢 Native session | 🟢 Native session; **joins your project in the Antigravity sidebar** (`--in`) |
+| **Secrets masked on screen and on the wire** | ❌ | 🟢 `NAME=********` |
+| **Optional key setup** | — | 🟢 `contextleleo setup` (no account needed for everything else) |
+| **Agents** | 🟢 Claude Code, Codex, Cursor, Antigravity and more | 🟢 The same adapters **plus Freebuff** |
+| **Demo kit and live-store tests** | — | 🟢 Seeded end-to-end demo, plus real-store checks |
+| **Interface** | Rust library · CLI · WASM | Rust library · CLI · WASM · MCP |
+| **License** | Apache-2.0 | Apache-2.0 (with a [NOTICE](NOTICE) crediting txcript) |
 
-**In short:** txcript is the **converter**, Skillsync is **search and memory**, and contextleleo is the **context governor between agents**: it keeps the converter underneath, adds the relevance decision, and shows its work.
+**Inherited from txcript:** the canonical transcript model, the agent adapters, the cross-agent search index, the CLI foundation and the MCP server.
+**Added in contextleleo:** Jev retrieval and ranking, task-aware trimming with traceable stand-ins, cross-project retrieval, `--explain`, credential masking, the `setup` flow, the Freebuff adapter, Antigravity project placement, and the demo kit.
+
+*txcript's column is checked against its repository as of October 2026. If something there has changed, [open an issue](https://github.com/Adityakk9031/contextleleo/issues).*
+
+**In short:** txcript is the **converter**. contextleleo is the converter **plus the relevance decision**: what to keep, what to shrink, what to leave out, shown and traceable.
 
 ---
 
@@ -395,7 +402,7 @@ An end-to-end demo against the real Jev API (needs a key; hermetic by default, n
 
 ## 🙏 Credit
 
-contextleleo is built on **[txcript](https://github.com/skillsynchq/txcript)** by **[Skillsync](https://github.com/skillsynchq)** (Apache-2.0): the canonical transcript model, the agent adapters, the search index and the CLI foundation all come from that project, and this repository keeps its Apache-2.0 license (see [NOTICE](NOTICE)). What this project adds on top: the Jev retrieval and ranking stage, task-aware trimming with traceable stand-ins, cross-project retrieval, secret masking, the `setup` flow, the Freebuff and Antigravity-project integrations, and the demo kit. Thank you to the txcript authors for the foundation.
+contextleleo is built on **[txcript](https://github.com/skillsynchq/txcript)**, the open-source project by the company **[Skillsync](https://github.com/skillsynchq)** (Apache-2.0): the canonical transcript model, the agent adapters, the search index and the CLI foundation all come from that project, and this repository keeps its Apache-2.0 license (see [NOTICE](NOTICE)). What this project adds on top: the Jev retrieval and ranking stage, task-aware trimming with traceable stand-ins, cross-project retrieval, secret masking, the `setup` flow, the Freebuff and Antigravity-project integrations, and the demo kit. Thank you to the txcript authors for the foundation.
 
 ---
 
