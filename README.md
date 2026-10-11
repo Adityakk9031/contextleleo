@@ -77,11 +77,9 @@ contextleleo is built on **[txcript](https://github.com/skillsynchq/txcript)**, 
   <sub>The player has pause · mute / unmute · skip ±10s · seek bar · speed · fullscreen · jump-to-chapter buttons</sub>
 </p>
 
-### Live Execution Highlights
-
 <p align="center">
-  <a href="docs/assets/contextleleo-demo-1080p.mp4">
-    <img src="docs/assets/demo-preview.gif" alt="contextleleo demo preview: a Claude Code session trimmed by Jev and opened in Antigravity, plus retrieval of an old fix from another project" width="100%" />
+  <a href="https://adityakk9031.github.io/contextleleo/">
+    <img src="docs/assets/demo-thumbnail.jpg" alt="Play the contextleleo demo video (2:49, 1080p, with voiceover)" width="100%" />
   </a>
 </p>
 
