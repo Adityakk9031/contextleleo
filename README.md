@@ -55,21 +55,34 @@ contextleleo is built on **[txcript](https://github.com/skillsynchq/txcript)**, 
 
 <!--
   Want the full-length inline player (a GitHub-hosted video) instead of this preview loop?
-  Open this file in the GitHub web editor, drag docs/assets/demo.mp4 (8.7 MB, under GitHub's
-  10 MB limit for free accounts) into it, and paste the generated
+  Open this file in the GitHub web editor, drag docs/assets/demo.mp4 (8.7 MB 720p copy, under GitHub's
+  10 MB limit for free accounts; or the 51 MB 1080p file if your account allows it) into it, and paste the generated
   https://github.com/user-attachments/assets/... URL on its own line right here.
 -->
 
+
 <p align="center">
-  <a href="docs/assets/demo.mp4">
-    <img src="docs/assets/demo-preview.gif" alt="contextleleo demo: a Claude Code session trimmed by Jev and opened in Antigravity, plus retrieval of an old fix from another project" width="760">
+  <a href="https://adityakk9031.github.io/contextleleo/">
+    <img src="https://img.shields.io/badge/▶_Watch_in_Player-1080p_•_2:49-blue?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch the demo in the video player" />
+  </a>
+  <a href="docs/assets/contextleleo-demo-1080p.mp4">
+    <img src="https://img.shields.io/badge/⬇_Download_Video-1080p_•_51_MB-green?style=for-the-badge&logo=github&logoColor=white" alt="Download the 1080p demo video" />
+  </a>
+  <a href="docs/demo-narration.md">
+    <img src="https://img.shields.io/badge/📝_Narration_Script-Full_Transcript-purple?style=for-the-badge" alt="Narration script" />
   </a>
 </p>
 
 <p align="center">
-  <a href="https://adityakk9031.github.io/contextleleo/"><b>▶️ Watch the Full 2:49 Demo in the Video Player</b></a><br>
-  <sub>pause · mute / unmute · skip ±10s · seek bar · speed · fullscreen · jump-to-chapter buttons</sub><br>
-  <a href="docs/assets/demo.mp4">Direct file (720p, 8.7 MB)</a>
+  <sub>The player has pause · mute / unmute · skip ±10s · seek bar · speed · fullscreen · jump-to-chapter buttons</sub>
+</p>
+
+### Live Execution Highlights
+
+<p align="center">
+  <a href="docs/assets/contextleleo-demo-1080p.mp4">
+    <img src="docs/assets/demo-preview.gif" alt="contextleleo demo preview: a Claude Code session trimmed by Jev and opened in Antigravity, plus retrieval of an old fix from another project" width="100%" />
+  </a>
 </p>
 
 > **What's happening in the video:** a huge Claude Code session is scored by Jev for its next task and handed to **Antigravity** with about **40% fewer tokens**. Then a bug found in that session is matched to an old fix from **another project and another agent**: Jev scores 64 candidate passages, keeps three at 0.94, ignores the rest, and the result opens in Antigravity under the right project. Every shrunk message links back to its untouched original.
