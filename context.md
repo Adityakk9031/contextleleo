@@ -195,7 +195,7 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 596 passing, 0 failing (this is the verified state)
+## 9. Tests — 601 passing, 0 failing (this is the verified state)
 
 **Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 125 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
@@ -870,3 +870,20 @@ size. A tiny half is now kept whole (`MIN_COMPRESS_TOKENS`); a large one still b
 `a_large_dropped_half_of_a_surviving_pair_becomes_a_stand_in`. Suite: 596 passed / 0 failed.
 
 **Open:** the conversation title is `[context request]`; naming it after the source title and the query would read better.
+
+## 31. Show the work: candidate table, `--max-chunks`; image token estimate; Freebuff `--no-resume` (2026-10-12)
+
+**Recording support.** `continue --explain` now narrates the pipeline on stderr: with `--retrieve`, the table of every
+candidate Jev scored (`retrieval::jev_filter_explained` → `CandidateVerdict`/`Verdict`: KEPT; ignored over the limit,
+under the 0.7 floor, or rejected by Jev) followed by "selected N chunks"; with `--task`, examples of what Jev dropped,
+shrank, and kept (largest first). `--explain-full` is the old one-row-per-message table. `--max-chunks N` caps
+retrieved chunks so a few can be shown. Tests: `the_explained_filter_says_why_each_candidate_was_kept_or_left_out`,
+`locators_are_shortened_for_the_explain_table`.
+
+**Token numbers were inflated by screenshots.** `estimate_message_tokens` counted an image's base64 bytes as text:
+three pasted screenshots made this chat read as ~655k tokens. An image is now `jev::IMAGE_TOKENS` (1,000). The same chat
+is ~295k, and a narrow task cuts it ~40%. Test `an_image_costs_a_fixed_estimate_not_its_byte_length`.
+
+**Bug: `--with freebuff --no-resume` opened the Freebuff app.** `launch_via` checked the Freebuff target before the
+resume flag, so every `continue` into Freebuff launched the app. Now only a real resume opens it
+(`opens_app_on_continue`). Test `freebuff_is_opened_only_when_a_resume_is_wanted`. Suite: 601 passed / 0 failed.

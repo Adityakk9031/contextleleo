@@ -1066,8 +1066,54 @@ pub fn jev_filter(
     candidates: Vec<RetrievedContext>,
     options: &RetrievalOptions,
 ) -> crate::Result<Vec<RetrievedContext>> {
+    jev_filter_explained(client, query, candidates, options).map(|(selected, _)| selected)
+}
+
+/// What happened to one candidate chunk in [`jev_filter_explained`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    /// Jev said yes, the score cleared the floor, and it made the final set.
+    Kept,
+    /// Jev said yes but the score is under `min_jev_relevance`: left out so
+    /// a barely-relevant chunk cannot dilute the handoff.
+    BelowFloor,
+    /// Jev said yes and the score cleared the floor, but the chunk limit
+    /// (`max_chunks` / `max_tokens`) was already full of better ones.
+    OverLimit,
+    /// Jev said no.
+    Rejected,
+}
+
+/// One candidate and what Jev and the filter did with it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CandidateVerdict {
+    /// The chunk's `harness:session#message` locator.
+    pub locator: String,
+    /// The source session's project, when known.
+    pub project: Option<String>,
+    /// Jev's probability that the chunk helps with the task.
+    pub jev_relevance: f32,
+    /// What became of it.
+    pub verdict: Verdict,
+    /// The chunk's text (the caller shortens it for display).
+    pub text: String,
+}
+
+/// [`jev_filter`] that also reports every candidate Jev scored and why each
+/// was kept or left out — the evidence behind "Jev decides", for a caller that
+/// wants to show it. Candidates come back best-scored first.
+///
+/// # Errors
+/// Same as [`jev_filter`].
+#[cfg(feature = "jev_api")]
+pub fn jev_filter_explained(
+    client: &JevClient,
+    query: &str,
+    candidates: Vec<RetrievedContext>,
+    options: &RetrievalOptions,
+) -> crate::Result<(Vec<RetrievedContext>, Vec<CandidateVerdict>)> {
     if candidates.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
     let payload: Vec<JevCandidate> = candidates
         .iter()
@@ -1077,7 +1123,50 @@ pub fn jev_filter(
         })
         .collect();
     let decisions = client.rank(query, &payload)?;
-    reconcile(candidates, decisions, options)
+    let by_id: HashMap<String, JevDecision> = decisions
+        .iter()
+        .map(|decision| (decision.id.clone(), decision.clone()))
+        .collect();
+    let notes: Vec<(String, Option<String>, String)> = candidates
+        .iter()
+        .map(|chunk| {
+            (
+                chunk.source.locator(),
+                chunk.project.clone(),
+                chunk.content.clone(),
+            )
+        })
+        .collect();
+    let selected = reconcile(candidates, decisions, options)?;
+    let kept: std::collections::HashSet<String> = selected
+        .iter()
+        .map(|chunk| chunk.source.locator())
+        .collect();
+    let mut verdicts: Vec<CandidateVerdict> = notes
+        .into_iter()
+        .filter_map(|(locator, project, text)| {
+            let decision = by_id.get(&locator)?;
+            let relevance = decision.relevance.clamp(0.0, 1.0);
+            let verdict = if kept.contains(&locator) {
+                Verdict::Kept
+            } else if decision.decision != JevDecisionKind::Retrieve {
+                Verdict::Rejected
+            } else if relevance < options.min_jev_relevance {
+                Verdict::BelowFloor
+            } else {
+                Verdict::OverLimit
+            };
+            Some(CandidateVerdict {
+                locator,
+                project,
+                jev_relevance: relevance,
+                verdict,
+                text,
+            })
+        })
+        .collect();
+    verdicts.sort_by(|a, b| b.jev_relevance.total_cmp(&a.jev_relevance));
+    Ok((selected, verdicts))
 }
 
 /// Apply Jev's decisions to the candidate chunks: exactly one answer per
@@ -1865,6 +1954,56 @@ mod task_scoring_tests {
         assert_eq!(allocated.items[2].decision, jev::ContextDecision::Compress);
         assert_eq!(allocated.items[4].decision, jev::ContextDecision::KeepFull);
         jev::apply(&source, &allocated).expect("the plan applies");
+    }
+
+    /// `jev_filter_explained` reports every candidate Jev scored and why each
+    /// was kept or left out: kept, ignored under the floor, ignored because
+    /// the chunk limit was full of better ones, and rejected by Jev.
+    #[test]
+    fn the_explained_filter_says_why_each_candidate_was_kept_or_left_out() {
+        let chunk = |name: &str| RetrievedContext {
+            source: SourceReference {
+                session: DocKey {
+                    harness: crate::HarnessId::Simple,
+                    id: name.to_string(),
+                    source: None,
+                },
+                message_index: Some(1),
+            },
+            content: format!("content of {name}"),
+            relevance: 0.5,
+            signals: Vec::new(),
+            session_time: Utc::now(),
+            project: Some("liquiguard-somnia".to_string()),
+        };
+        let candidates = vec![chunk("best"), chunk("barely"), chunk("no"), chunk("second")];
+        let (url, _received) = serve_answers(vec![answers(&[0.95, 0.62, 0.30, 0.90])]);
+        let client = JevClient::new("key", url);
+        let options = RetrievalOptions {
+            max_chunks: 1,
+            ..RetrievalOptions::default()
+        };
+
+        let (selected, verdicts) =
+            jev_filter_explained(&client, "redis", candidates, &options).expect("explained");
+        assert_eq!(selected.len(), 1);
+        let verdict_of = |name: &str| {
+            verdicts
+                .iter()
+                .find(|v| v.locator.contains(name))
+                .map(|v| v.verdict)
+        };
+        assert_eq!(verdict_of("best"), Some(Verdict::Kept));
+        assert_eq!(verdict_of("second"), Some(Verdict::OverLimit));
+        assert_eq!(verdict_of("barely"), Some(Verdict::BelowFloor));
+        assert_eq!(verdict_of("no"), Some(Verdict::Rejected));
+        // Best-scored first, with the project carried along.
+        assert!(
+            verdicts
+                .windows(2)
+                .all(|w| w[0].jev_relevance >= w[1].jev_relevance)
+        );
+        assert_eq!(verdicts[0].project.as_deref(), Some("liquiguard-somnia"));
     }
 
     /// A mid-scored message too short for a stand-in to be smaller than it

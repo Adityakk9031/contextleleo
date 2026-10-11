@@ -240,11 +240,18 @@ pub enum SessionCommand {
         /// `TYPESAFE_API_KEY`).
         #[arg(long, value_name = "TEXT", requires = "jev")]
         task: Option<String>,
-        /// With --task: print each message's Jev score and decision (keep /
-        /// shrink / drop) to stderr, so you can see why the handoff looks
-        /// the way it does.
-        #[arg(long, requires = "task")]
+        /// Show the work, on stderr: with --retrieve, every candidate Jev
+        /// scored and whether it was kept or left out (and why); with --task,
+        /// examples of what Jev kept, shrank, and dropped from this session.
+        #[arg(long, requires = "jev")]
         explain: bool,
+        /// Like --explain, but print every message's Jev score and decision
+        /// (long: one row per message).
+        #[arg(long, requires = "task")]
+        explain_full: bool,
+        /// With --retrieve: keep at most N retrieved chunks (default 12).
+        #[arg(long, value_name = "N", requires = "retrieve")]
+        max_chunks: Option<usize>,
         /// Harness-specific mint / import options (repeatable). Each value is
         /// either `key=value` or a JSON object. Merged left-to-right; unknown
         /// keys are ignored by harnesses that do not consume them. `grok_bot`
@@ -525,6 +532,8 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             in_dir,
             task,
             explain,
+            explain_full,
+            max_chunks,
             metadata,
         } => cmd_continue(
             &id,
@@ -539,6 +548,8 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             in_dir.as_deref(),
             task.as_deref(),
             explain,
+            explain_full,
+            max_chunks,
             &metadata,
         ),
         SessionCommand::Crop { source, with, from } => cmd_crop(&source, with, from),
@@ -1509,6 +1520,29 @@ mod jev_continue_tests {
         );
     }
 
+    /// `continue --with freebuff --no-resume` must not launch the app: it only
+    /// opens Freebuff when a resume was asked for.
+    #[test]
+    fn freebuff_is_opened_only_when_a_resume_is_wanted() {
+        assert!(opens_app_on_continue(HarnessId::Freebuff, true));
+        assert!(!opens_app_on_continue(HarnessId::Freebuff, false));
+        assert!(!opens_app_on_continue(HarnessId::Codex, true));
+        // `--no-resume` and `--out` both turn the resume off.
+        assert!(!wants_resume(HarnessId::Freebuff, false, true));
+        assert!(!wants_resume(HarnessId::Freebuff, true, false));
+        assert!(wants_resume(HarnessId::Freebuff, false, false));
+    }
+
+    /// Locators in the explain table are shortened to something readable.
+    #[test]
+    fn locators_are_shortened_for_the_explain_table() {
+        assert_eq!(
+            short_locator("antigravity:1ce7f615-96d2-49fc-9f32-e35d1d06fe4f#63"),
+            "antigravity 1ce7f615#63"
+        );
+        assert_eq!(short_locator("simple:abc"), "simple abc");
+    }
+
     /// `--explain` previews are one line, capped, and never show a
     /// credential value.
     #[test]
@@ -1907,13 +1941,18 @@ fn cmd_continue(
     in_dir: Option<&Path>,
     task: Option<&str>,
     explain: bool,
+    explain_full: bool,
+    max_chunks: Option<usize>,
     metadata_specs: &[String],
 ) -> Result<ExitCode, String> {
-    let task = task.map(|text| TaskSpec { text, explain });
-    let retrieve = retrieve.map(|query| RetrieveSpec {
-        query,
+    let (retrieve, task) = continue_specs(
+        retrieve,
         this_project_only,
-    });
+        task,
+        explain,
+        explain_full,
+        max_chunks,
+    );
     let metadata = continue_metadata(metadata_specs, in_dir)?;
     let metadata = metadata.as_ref();
     // `JevPlan`: outer `None` = no `--jev`; `Some(budget)` = the flag, with
@@ -2148,6 +2187,36 @@ fn retrieval_summary(
     line
 }
 
+/// The `--retrieve` and `--task` requests, with how much of Jev's work to show.
+#[allow(clippy::fn_params_excessive_bools)]
+fn continue_specs<'a>(
+    retrieve: Option<&'a str>,
+    this_project_only: bool,
+    task: Option<&'a str>,
+    explain: bool,
+    explain_full: bool,
+    max_chunks: Option<usize>,
+) -> (Option<RetrieveSpec<'a>>, Option<TaskSpec<'a>>) {
+    let mode = if explain_full {
+        Explain::Full
+    } else if explain {
+        Explain::Summary
+    } else {
+        Explain::Off
+    };
+    let retrieve = retrieve.map(|query| RetrieveSpec {
+        query,
+        this_project_only,
+        explain: mode != Explain::Off,
+        max_chunks: max_chunks.unwrap_or(contextleleo::retrieval::DEFAULT_MAX_CHUNKS),
+    });
+    let task = task.map(|text| TaskSpec {
+        text,
+        explain: mode,
+    });
+    (retrieve, task)
+}
+
 /// The `--retrieve` request: the question, and whether to stay inside the
 /// current project folder (`--this-project-only`) instead of searching every
 /// project's sessions.
@@ -2155,6 +2224,20 @@ fn retrieval_summary(
 struct RetrieveSpec<'a> {
     query: &'a str,
     this_project_only: bool,
+    /// Print every candidate Jev scored, and what became of it.
+    explain: bool,
+    /// The most chunks the handoff keeps.
+    max_chunks: usize,
+}
+
+/// How much of Jev's work `--explain` shows.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Explain {
+    Off,
+    /// The retrieval candidates and examples of what happened to the session.
+    Summary,
+    /// Every message's score.
+    Full,
 }
 
 /// The `--task` request: what the next agent will do, and whether to print
@@ -2162,7 +2245,7 @@ struct RetrieveSpec<'a> {
 #[derive(Clone, Copy)]
 struct TaskSpec<'a> {
     text: &'a str,
-    explain: bool,
+    explain: Explain,
 }
 
 /// `prepended` is the origin map of a retrieval-prepended copy, and `task`
@@ -2235,8 +2318,10 @@ fn apply_jev_with(
             report.counts[1],
             report.counts[2],
         );
-        if task.is_some_and(|task| task.explain) {
-            explain_scores(common, &allocated, relevance);
+        match task.map(|task| task.explain) {
+            Some(Explain::Full) => explain_scores(common, &allocated, relevance),
+            Some(Explain::Summary) => explain_examples(common, &allocated, relevance),
+            _ => {}
         }
     }
     let before: usize = common.body.iter().map(jev::estimate_message_tokens).sum();
@@ -2289,6 +2374,122 @@ fn explain_scores(
     }
 }
 
+/// Print every candidate Jev scored for a retrieval, and what became of it:
+/// the kept ones, then the best of the rest with the reason each was left out.
+fn explain_candidates(
+    query: &str,
+    found: usize,
+    verdicts: &[contextleleo::retrieval::CandidateVerdict],
+    floor: f32,
+) {
+    use contextleleo::retrieval::Verdict;
+    eprintln!(
+        "\nretrieval: local search found {found} candidates for \"{}\"; Jev scored each:",
+        query.chars().take(70).collect::<String>()
+    );
+    eprintln!(
+        "  {:>5}  {:<14}  {:<26}  {:<18}  text",
+        "jev", "verdict", "source", "project"
+    );
+    let row = |verdict: &contextleleo::retrieval::CandidateVerdict| {
+        let label = match verdict.verdict {
+            Verdict::Kept => "KEPT".to_string(),
+            Verdict::BelowFloor => format!("ignored <{floor:.1}"),
+            Verdict::OverLimit => "ignored (limit)".to_string(),
+            Verdict::Rejected => "ignored (no)".to_string(),
+        };
+        eprintln!(
+            "  {:>5.2}  {:<14}  {:<26}  {:<18}  {}",
+            verdict.jev_relevance,
+            label,
+            short_locator(&verdict.locator),
+            verdict
+                .project
+                .as_deref()
+                .unwrap_or("-")
+                .chars()
+                .take(18)
+                .collect::<String>(),
+            masked_preview(&verdict.text, 60),
+        );
+    };
+    let mut kept_count = 0;
+    for verdict in verdicts.iter().filter(|v| v.verdict == Verdict::Kept) {
+        kept_count += 1;
+        row(verdict);
+    }
+    // Then a couple of each way a candidate gets left out, best first, so the
+    // reader sees *why* — not only that the list was cut.
+    let mut shown = 0;
+    for kind in [Verdict::OverLimit, Verdict::BelowFloor, Verdict::Rejected] {
+        for verdict in verdicts.iter().filter(|v| v.verdict == kind).take(2) {
+            shown += 1;
+            row(verdict);
+        }
+    }
+    let left_out = verdicts.len() - kept_count - shown;
+    if left_out > 0 {
+        eprintln!("  … {left_out} more candidates scored lower and were left out");
+    }
+    eprintln!(
+        "selected {kept_count} chunk{} for the new session",
+        if kept_count == 1 { "" } else { "s" }
+    );
+}
+
+/// `antigravity:1ce7f615-96d2-…#63` → `antigravity 1ce7f615#63`.
+fn short_locator(locator: &str) -> String {
+    let (harness, rest) = locator.split_once(':').unwrap_or(("", locator));
+    let (id, message) = rest.split_once('#').unwrap_or((rest, ""));
+    let id: String = id.chars().take(8).collect();
+    if message.is_empty() {
+        format!("{harness} {id}")
+    } else {
+        format!("{harness} {id}#{message}")
+    }
+}
+
+/// What Jev did to this session's own messages, by example: the largest few it
+/// dropped, shrank, and kept. (`--explain-full` prints every message.)
+fn explain_examples(
+    common: &Transcript<Common>,
+    plan: &jev::ContextPlan,
+    relevance: &std::collections::HashMap<usize, f32>,
+) {
+    eprintln!("\nthis session's messages, by example (largest first):");
+    eprintln!(
+        "  {:>4}  {:<9} {:>6}  {:>4}  {:<6}  text",
+        "#", "role", "tokens", "jev", "action"
+    );
+    for (decision, label) in [
+        (jev::ContextDecision::Drop, "drop"),
+        (jev::ContextDecision::Compress, "shrink"),
+        (jev::ContextDecision::KeepFull, "keep"),
+    ] {
+        let mut rows: Vec<usize> = plan
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(index, item)| item.decision == decision && relevance.contains_key(index))
+            .map(|(index, _)| index)
+            .collect();
+        rows.sort_by_key(|&index| std::cmp::Reverse(plan.items[index].token_cost));
+        for &index in rows.iter().take(3) {
+            eprintln!(
+                "  {:>4}  {:<9} {:>6}  {:>4}  {:<6}  {}",
+                index + 1,
+                format!("{:?}", common.body[index].role).to_lowercase(),
+                plan.items[index].token_cost,
+                relevance
+                    .get(&index)
+                    .map_or_else(|| "-".to_string(), |v| format!("{v:.2}")),
+                label,
+                message_preview(&common.body[index]),
+            );
+        }
+    }
+}
+
 /// A one-line, credential-masked preview of a message for `--explain`.
 fn message_preview(message: &contextleleo::common::Message) -> String {
     use contextleleo::common::{Block, ToolOutput};
@@ -2306,13 +2507,18 @@ fn message_preview(message: &contextleleo::common::Message) -> String {
             _ => None,
         })
         .unwrap_or_default();
-    let flat: String = contextleleo::redact::mask(&raw)
+    masked_preview(&raw, 60)
+}
+
+/// `text` on one line, credential values starred, cut to `width` characters.
+fn masked_preview(text: &str, width: usize) -> String {
+    let flat: String = contextleleo::redact::mask(text)
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
     let flat = flat.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut preview: String = flat.chars().take(60).collect();
-    if flat.chars().count() > 60 {
+    let mut preview: String = flat.chars().take(width).collect();
+    if flat.chars().count() > width {
         preview.push('…');
     }
     preview
@@ -2385,11 +2591,12 @@ fn prepend_retrieved(
     common: &mut Transcript<Common>,
     query: &str,
     this_project_only: bool,
+    explain: bool,
     max_chunks: usize,
     max_tokens: Option<usize>,
 ) -> Result<Prepended, String> {
     use contextleleo::retrieval::{
-        JEV_CANDIDATE_CHUNKS, RetrievalOptions, jev_filter, retrieve_local,
+        JEV_CANDIDATE_CHUNKS, RetrievalOptions, jev_filter_explained, retrieve_local,
     };
     // Without a Jev key the ranking stage has no intelligence layer:
     // stop here with the configuration error rather than silently
@@ -2449,7 +2656,12 @@ fn prepend_retrieved(
         );
         return Ok(none());
     }
-    let chunks = jev_filter(&client, query, candidates, &options).map_err(|e| e.to_string())?;
+    let found = candidates.len();
+    let (chunks, verdicts) =
+        jev_filter_explained(&client, query, candidates, &options).map_err(|e| e.to_string())?;
+    if explain {
+        explain_candidates(query, found, &verdicts, options.min_jev_relevance);
+    }
     if chunks.is_empty() {
         return Ok(none());
     }
@@ -2892,7 +3104,8 @@ fn continue_session(
                     &mut common,
                     spec.query,
                     spec.this_project_only,
-                    contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
+                    spec.explain,
+                    spec.max_chunks,
                     None,
                 )?;
                 println!("{}", found_chunks.summary);
@@ -2912,7 +3125,8 @@ fn continue_session(
                     &mut copy,
                     spec.query,
                     spec.this_project_only,
-                    contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
+                    spec.explain,
+                    spec.max_chunks,
                     None,
                 )?;
                 println!("{}", found_chunks.summary);
@@ -2952,7 +3166,8 @@ fn continue_loaded_remote(
             &mut copy,
             spec.query,
             spec.this_project_only,
-            contextleleo::retrieval::DEFAULT_MAX_CHUNKS,
+            spec.explain,
+            spec.max_chunks,
             None,
         )?;
         println!("{}", found_chunks.summary);
@@ -3165,6 +3380,12 @@ fn launch(
     launch_via(target, resume_id, cwd, resume, false)
 }
 
+/// Whether `continue` should open the Freebuff desktop app: only when the
+/// caller wants a resume — never under `--no-resume` or `--out`.
+fn opens_app_on_continue(target: HarnessId, resume: bool) -> bool {
+    target == HarnessId::Freebuff && resume
+}
+
 /// [`launch`], optionally reattaching the controlling terminal as the
 /// harness's stdin — needed when the session document was itself read from
 /// stdin, which an interactive resume would otherwise find at EOF.
@@ -3182,7 +3403,9 @@ fn launch_via(
     }
     // Freebuff is a desktop app with no CLI resume; opening it is the only
     // hand-off, and it lists the thread under its project once it rescans.
-    if target == HarnessId::Freebuff {
+    // `--no-resume` (and `--out`) mean "write it, don't launch anything", so
+    // they fall through to printing the command like every other harness.
+    if opens_app_on_continue(target, resume) {
         let (bin, args) = local::resume_command(target, resume_id);
         let status = std::process::Command::new(&bin).args(&args).status();
         return match status {

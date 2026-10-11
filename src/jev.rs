@@ -107,6 +107,9 @@ pub fn estimate_tokens(text: &str) -> usize {
 /// their text, tool calls and results by their canonical input/output
 /// rendering, images by their encoded payload. Metadata (timestamps, usage,
 /// stop reasons) is excluded — the handoff does not carry it.
+/// Estimated tokens for one inline image, whatever its byte size.
+pub const IMAGE_TOKENS: usize = 1_000;
+
 #[must_use]
 pub fn estimate_message_tokens(message: &Message) -> usize {
     message
@@ -116,7 +119,10 @@ pub fn estimate_message_tokens(message: &Message) -> usize {
             Block::Text { text } | Block::Thinking { text, .. } => estimate_tokens(text),
             Block::ToolUse { tool, .. } => estimate_tokens(&tool.to_canonical().1.to_string()),
             Block::ToolResult { content, .. } => estimate_tokens(&content_key(content)),
-            Block::Image { source } => estimate_tokens(&source.data),
+            // An image costs what the model charges for it (roughly a thousand
+            // tokens), not the length of its base64 bytes: a screenshot pasted
+            // into a chat would otherwise count as ~150k tokens of text.
+            Block::Image { .. } => IMAGE_TOKENS,
             Block::Artifact { artifact } => estimate_tokens(&artifact.display_text()),
         })
         .sum()
@@ -1920,6 +1926,27 @@ mod tests {
         assert!(reference.contains("session `earlier-session` message 42"));
         assert!(reference.contains("view earlier-session#43"));
         assert!(!reference.contains("jev-test"));
+    }
+
+    /// A pasted screenshot is charged like an image, not like its base64
+    /// bytes as text (a 600 KB screenshot is ~1k tokens, not ~150k).
+    #[test]
+    fn an_image_costs_a_fixed_estimate_not_its_byte_length() {
+        let message = Message {
+            role: Role::User,
+            content: vec![Block::Image {
+                source: crate::common::ImageSource {
+                    source_type: "base64".into(),
+                    media_type: "image/png".into(),
+                    data: "A".repeat(600_000),
+                },
+            }],
+            timestamp: chrono::Utc::now(),
+            model: None,
+            stop_reason: None,
+            usage: None,
+        };
+        assert_eq!(estimate_message_tokens(&message), IMAGE_TOKENS);
     }
 
     /// A `Compress` item between two `Drop`s must still be rewritten at the
