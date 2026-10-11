@@ -16,6 +16,34 @@
 
 ---
 
+## 🆚 How Is This Different from txcript and Skillsync?
+
+All three start from the same idea: **agent sessions hold the context behind the context.** They differ in *what happens next*.
+
+- **[txcript](https://github.com/skillsynchq/txcript)** moves a *whole* conversation from one agent's format to another ("Pandoc for AI chats").
+- **[Skillsync](https://skillsync.com)** helps you *find* old context across your sessions while you work, and turns sessions into skills and memory.
+- **contextleleo** decides *which parts of one or many sessions the next agent actually needs*, shrinks the rest, and writes the result into that agent as a native session you can trace back to the originals.
+
+| | txcript | Skillsync *(as announced)* | **contextleleo** |
+| :--- | :--- | :--- | :--- |
+| **Core job** | Convert a session between agent formats | Search past sessions mid-prompt; build skills and memory | **Pick, score and shrink context for the next task, then hand it over** |
+| **Hand a session to another agent** | 🟢 Whole, as-is | — | 🟢 **Trimmed to what the next task needs** |
+| **Search across agents** | 🟢 Literal text search | 🟢 Hotkey search (Mac app) | 🟢 Local search **plus Jev yes/no** over every project |
+| **Jev relevance scoring** | ❌ | 🟢 For retrieval | 🟢 For retrieval **and** for the handoff's own messages (`--task`) |
+| **Shrinks the handoff** | ❌ Sends the full transcript | — | 🟢 Keep / shrink / drop to a token budget |
+| **Traceable stand-ins** | ❌ | — | 🟢 Every shrunk message links to `session#message` in the untouched original |
+| **Shows its work** | ❌ | — | 🟢 `--explain`: each candidate's score and why it was kept or ignored |
+| **Retrieval lands as a new session** under your project | ❌ | — | 🟢 Written natively; joins your project in Antigravity |
+| **Secrets masked on screen and on the wire** | — | — | 🟢 `NAME=********` |
+| **Interface** | Rust library · CLI · WASM | Mac app (CLI planned) | Rust library · CLI · MCP |
+| **Source** | 🟢 Open (Apache-2.0) | Early access | 🟢 Open (Apache-2.0) |
+
+*🟢 = yes, ❌ = no, — = not announced or not its focus. txcript's column is checked against its repository; Skillsync's is from its public announcement and website, not from running the product, so treat it as a summary and [open an issue](https://github.com/Adityakk9031/contextleleo/issues) if something is out of date.*
+
+**In short:** txcript is the **converter**, Skillsync is **search and memory**, and contextleleo is the **context governor between agents**: it keeps the converter underneath, adds the relevance decision, and shows its work.
+
+---
+
 ## 🎬 Live Demo
 
 <!--
