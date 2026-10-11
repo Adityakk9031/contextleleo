@@ -330,6 +330,28 @@ fn handoffs_written_by_contextleleo_are_recognised() {
     )));
 }
 
+/// The ask that opens a retrieval handoff carries the question on its first
+/// line, so a desktop app titles the conversation from it.
+#[test]
+fn the_context_request_names_the_question_on_its_first_line() {
+    let chunks: Vec<contextleleo::retrieval::RetrievedContext> = Vec::new();
+    let short = assemble(&chunks, "fix the redis timeout");
+    assert_eq!(
+        short.body[0].content[0].block_text(),
+        "[context request] fix the redis timeout"
+    );
+    let long_query = "word ".repeat(60);
+    let long = assemble(&chunks, &long_query);
+    let text = long.body[0].content[0].block_text();
+    let first = text.lines().next().unwrap();
+    assert!(first.starts_with("[context request] word word"), "{first}");
+    assert!(
+        first.ends_with('…') && first.chars().count() < 120,
+        "{first}"
+    );
+    assert!(text.contains(long_query.trim()), "the full query is kept");
+}
+
 /// A retrieved chunk that quotes a `.env` line keeps the variable's name
 /// and shows stars for the value, so neither the printed chunks nor the
 /// handoff written into the next agent carries the key.

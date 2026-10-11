@@ -835,7 +835,17 @@ pub fn assemble(chunks: &[RetrievedContext], query: &str) -> Transcript<Common> 
     }
     // The query itself leads the assembled context, so the optimizer sees
     // what the handoff is for.
-    let ask = format!("[context request]\n{query}");
+    // The question rides the first line: desktop apps title a conversation
+    // from its first message, and a bare `[context request]` made every
+    // retrieval handoff in a sidebar look the same. A long or multi-line query
+    // is repeated in full below.
+    let flat = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    let headline: String = flat.chars().take(90).collect();
+    let ask = if headline == query.trim() {
+        format!("[context request] {headline}")
+    } else {
+        format!("[context request] {headline}…\n{query}")
+    };
     messages.insert(
         0,
         Message {
