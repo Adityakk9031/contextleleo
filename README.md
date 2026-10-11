@@ -67,7 +67,9 @@ contextleleo is built on **[txcript](https://github.com/skillsynchq/txcript)**, 
 </p>
 
 <p align="center">
-  <a href="docs/assets/demo.mp4"><b>▶️ Watch the Full 2:49 Demo Video with Voiceover Narration (720p, 8.7 MB)</b></a>
+  <a href="https://adityakk9031.github.io/contextleleo/"><b>▶️ Watch the Full 2:49 Demo in the Video Player</b></a><br>
+  <sub>pause · mute / unmute · skip ±10s · seek bar · speed · fullscreen · jump-to-chapter buttons</sub><br>
+  <a href="docs/assets/demo.mp4">Direct file (720p, 8.7 MB)</a>
 </p>
 
 > **What's happening in the video:** a huge Claude Code session is scored by Jev for its next task and handed to **Antigravity** with about **40% fewer tokens**. Then a bug found in that session is matched to an old fix from **another project and another agent**: Jev scores 64 candidate passages, keeps three at 0.94, ignores the rest, and the result opens in Antigravity under the right project. Every shrunk message links back to its untouched original.

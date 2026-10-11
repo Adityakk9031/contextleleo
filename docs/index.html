@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>contextleleo: demo video</title>
+<meta name="description" content="Carry your coding agent's context to the next agent, without carrying the baggage. 2:49 demo with voiceover.">
+<style>
+  :root { color-scheme: dark; --bg:#0f1115; --card:#181b22; --fg:#eceff4; --dim:#8c96a5; --teal:#4fd1c5; --line:#2a2f3a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { margin:0 0 4px; font-size: 1.7rem; }
+  h1 span { color: var(--teal); }
+  p.sub { margin:0 0 20px; color: var(--dim); }
+  video { width:100%; border-radius:12px; background:#000; border:1px solid var(--line); }
+  .chapters { margin-top:18px; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; }
+  .chapters button { text-align:left; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font:inherit; cursor:pointer; }
+  .chapters button:hover, .chapters button.on { border-color: var(--teal); }
+  .chapters b { color: var(--teal); font-variant-numeric: tabular-nums; margin-right:8px; }
+  .keys { margin-top:16px; color:var(--dim); font-size:.9rem; }
+  kbd { background:var(--card); border:1px solid var(--line); border-radius:5px; padding:1px 6px; font-size:.85rem; }
+  .links { margin-top:24px; display:flex; gap:16px; flex-wrap:wrap; }
+  a { color: var(--teal); }
+</style>
+</head>
+<body>
+<main>
+  <h1><span>contextleleo</span> demo</h1>
+  <p class="sub">A Claude Code session trimmed by Jev and opened in Antigravity, plus retrieval of an old fix from another project. 2:49, with voiceover.</p>
+
+  <video id="v" controls preload="metadata" playsinline poster="assets/demo-poster.jpg">
+    <source src="assets/demo.mp4" type="video/mp4">
+    Your browser can't play this video. <a href="assets/demo.mp4">Download it</a>.
+  </video>
+
+  <div class="chapters" id="chapters"></div>
+
+  <p class="keys">Keyboard: <kbd>Space</kbd> / <kbd>K</kbd> play or pause · <kbd>M</kbd> mute · <kbd>J</kbd> / <kbd>←</kbd> back 10s · <kbd>L</kbd> / <kbd>→</kbd> forward 10s · <kbd>F</kbd> fullscreen · <kbd>0</kbd>–<kbd>9</kbd> jump · <kbd>&lt;</kbd> <kbd>&gt;</kbd> speed</p>
+
+  <div class="links">
+    <a href="https://github.com/Adityakk9031/contextleleo">GitHub repository</a>
+    <a href="assets/demo.mp4" download>Download the video (8.7 MB)</a>
+  </div>
+</main>
+<script>
+  const v = document.getElementById('v');
+  const chapters = [
+    ['0:00','Intro',0], ['0:07','The problem',7.3], ['0:28','How it works',27.9],
+    ['1:06','Normal case: Jev trims this session',65.7], ['1:26','…as Antigravity received it',86.1],
+    ['1:45','Retrieval: find the old fix',104.8], ['2:14','…in Antigravity under the project',134.4],
+    ['2:30','Try it',150.4]
+  ];
+  const box = document.getElementById('chapters');
+  chapters.forEach(([t,label,sec]) => {
+    const b = document.createElement('button');
+    b.innerHTML = '<b>'+t+'</b>'+label;
+    b.onclick = () => { v.currentTime = sec; v.play(); };
+    b.dataset.sec = sec; box.appendChild(b);
+  });
+  v.addEventListener('timeupdate', () => {
+    let on = 0; chapters.forEach((c,i) => { if (v.currentTime >= c[2]) on = i; });
+    [...box.children].forEach((b,i) => b.classList.toggle('on', i === on));
+  });
+  const rates = [0.5,0.75,1,1.25,1.5,2];
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'BUTTON' && e.key === ' ') return;
+    const k = e.key.toLowerCase();
+    if (k === ' ' || k === 'k') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+    else if (k === 'm') v.muted = !v.muted;
+    else if (k === 'j' || e.key === 'ArrowLeft') v.currentTime = Math.max(0, v.currentTime - 10);
+    else if (k === 'l' || e.key === 'ArrowRight') v.currentTime = Math.min(v.duration, v.currentTime + 10);
+    else if (k === 'f') { document.fullscreenElement ? document.exitFullscreen() : v.requestFullscreen(); }
+    else if (/^[0-9]$/.test(k)) v.currentTime = v.duration * (+k / 10);
+    else if (e.key === '>' || e.key === '<') { let i = rates.indexOf(v.playbackRate); i = Math.max(0, Math.min(rates.length - 1, i + (e.key === '>' ? 1 : -1))); v.playbackRate = rates[i]; }
+  });
+</script>
+</body>
+</html>
