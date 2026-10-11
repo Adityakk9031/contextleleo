@@ -685,6 +685,57 @@ fn fixpoint_common() -> Transcript<Common> {
     Transcript::new(meta, body)
 }
 
+/// A conversation written for a folder the desktop app already lists as a
+/// project joins that project's sidebar group (the app's own project id);
+/// a folder the app does not know keeps the CLI default.
+#[test]
+#[cfg(feature = "opencode")]
+fn a_conversation_joins_the_apps_project_for_its_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let index = rusqlite::Connection::open(dir.path().join("conversation_summaries.db")).unwrap();
+    index
+        .execute_batch(
+            "CREATE TABLE conversation_summaries (
+                conversation_id TEXT PRIMARY KEY, workspace_uris TEXT, project_id TEXT);
+             INSERT INTO conversation_summaries VALUES
+                ('known', '[\"file:///Users/x/Documents/jev%20cli\"]', 'app-project-1234'),
+                ('cli', '[\"file:///Users/x/Downloads/cli-only\"]', 'default-cli-project');",
+        )
+        .unwrap();
+    drop(index);
+
+    let store = antigravity::AntigravityStore::new(dir.path());
+    let project_of = |cwd: &str| -> String {
+        let mut common = fixpoint_common();
+        common.meta.cwd = Some(cwd.to_string());
+        common.meta.id = uuid::Uuid::new_v4().to_string();
+        let saved = store
+            .save(&antigravity::Antigravity::from_common(&common).unwrap())
+            .unwrap();
+        let conn = rusqlite::Connection::open(saved.reference).unwrap();
+        let blob: Vec<u8> = conn
+            .query_row(
+                "SELECT data FROM trajectory_metadata_blob WHERE id = 'main'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        String::from_utf8_lossy(&blob).into_owned()
+    };
+
+    // The app's project, found even though the index stores the space as %20.
+    let joined = project_of("/Users/x/Documents/jev cli");
+    assert!(joined.contains("app-project-1234"), "{joined}");
+    assert!(!joined.contains("default-cli-project"), "{joined}");
+    // A folder only the CLI knows, and one nobody knows, keep the default.
+    assert!(project_of("/Users/x/Downloads/cli-only").contains("default-cli-project"));
+    assert!(project_of("/Users/x/Elsewhere").contains("default-cli-project"));
+    assert_eq!(
+        antigravity::app_project_id(dir.path(), "/Users/x/Documents/jev cli").as_deref(),
+        Some("app-project-1234")
+    );
+}
+
 #[test]
 fn codec_fixpoint_through_common_loses_nothing() {
     let original = fixpoint_common();

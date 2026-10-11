@@ -667,6 +667,14 @@ fn parse_result_text(text: String) -> ToolOutput {
         .map_or(ToolOutput::Text(text), ToolOutput::Json)
 }
 
+#[cfg(feature = "opencode")]
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty()
+        && haystack
+            .windows(needle.len())
+            .any(|window| window == needle)
+}
+
 fn strip_file_uri(uri: &str) -> String {
     uri.strip_prefix("file://").unwrap_or(uri).to_string()
 }
@@ -1571,6 +1579,18 @@ fn is_derived_edit_result(result: &PendingResult, file_path: &str, key: &str) ->
 
 /// `exa.cortex_pb.CortexTrajectoryMetadata` for the `main` row.
 fn trajectory_metadata_proto(meta: &Meta, session_id: &str) -> Vec<u8> {
+    trajectory_metadata_proto_for(meta, session_id, DEFAULT_PROJECT_ID)
+}
+
+/// The project id the standalone CLI stamps on every conversation. The
+/// desktop app keeps its own project registry (one id per workspace folder
+/// you opened in it) and groups its sidebar by that id, so a conversation
+/// carrying this default is listed under *Conversation History*, not under a
+/// project; [`app_project_id`] finds the app's id for a folder.
+const DEFAULT_PROJECT_ID: &str = "default-cli-project";
+
+/// [`trajectory_metadata_proto`] with an explicit project id.
+fn trajectory_metadata_proto_for(meta: &Meta, session_id: &str, project_id: &str) -> Vec<u8> {
     let mut out = Vec::new();
     if let Some(cwd) = meta.cwd.as_deref() {
         let uri = file_uri(cwd);
@@ -1585,7 +1605,7 @@ fn trajectory_metadata_proto(meta: &Meta, session_id: &str) -> Vec<u8> {
     }
     pb_timestamp_field(&mut out, 2, meta.timestamp);
     pb_string(&mut out, 6, session_id);
-    pb_string(&mut out, 18, "default-cli-project");
+    pb_string(&mut out, 18, project_id);
     out
 }
 
@@ -1772,6 +1792,37 @@ pub fn app_owns_session_list(root: &Path) -> bool {
     root.join(APP_INDEX_FILE).is_file()
 }
 
+/// The desktop app's own project id for the workspace folder `cwd`, read from
+/// its conversation index under `root` — `None` when the root has no index,
+/// the folder was never opened in the app, or only the CLI default is known.
+///
+/// The index stores workspace URIs percent-encoded (`jev%20cli`), so both the
+/// plain and the encoded spelling of the folder are tried.
+#[cfg(feature = "opencode")]
+#[must_use]
+pub fn app_project_id(root: &Path, cwd: &str) -> Option<String> {
+    let index = root.join(APP_INDEX_FILE);
+    if !index.is_file() {
+        return None;
+    }
+    let conn = Connection::open_with_flags(
+        &index,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .ok()?;
+    let plain = file_uri(cwd.trim_end_matches('/'));
+    let encoded = plain.replace(' ', "%20");
+    [plain, encoded].into_iter().find_map(|uri| {
+        conn.query_row(
+            "SELECT project_id FROM conversation_summaries \
+             WHERE workspace_uris LIKE ?1 AND project_id <> ?2 AND project_id <> '' LIMIT 1",
+            params![format!("%\"{uri}\"%"), DEFAULT_PROJECT_ID],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+    })
+}
+
 /// Reads and writes Antigravity conversations under a data root (default:
 /// whichever of [`CANDIDATE_ROOTS`] exists under `~/.gemini`).
 #[derive(Debug, Clone)]
@@ -1876,7 +1927,25 @@ impl Store for AntigravityStore {
         let conversations = self.conversations_dir();
         fs::create_dir_all(&conversations)?;
         let db_path = conversations.join(format!("{id}.db"));
-        write_db(&db_path, &transcript.body)?;
+        // A conversation written for a folder the desktop app already has as
+        // a project joins that project's sidebar group instead of the CLI
+        // default. Only the synthesized default is replaced: a project id the
+        // source conversation already carried is left alone.
+        let mut body = transcript.body.clone();
+        if let Some(project) = transcript
+            .meta
+            .cwd
+            .as_deref()
+            .and_then(|cwd| app_project_id(&self.root, cwd))
+            && let Some(row) = body
+                .trajectory_metadata_blob
+                .iter_mut()
+                .find(|row| row.id == "main")
+            && contains_bytes(&row.data, DEFAULT_PROJECT_ID.as_bytes())
+        {
+            row.data = trajectory_metadata_proto_for(&transcript.meta, &id, &project);
+        }
+        write_db(&db_path, &body)?;
 
         // The CLI wedges on resume when `brain/<id>/` is absent; contents are
         // optional.

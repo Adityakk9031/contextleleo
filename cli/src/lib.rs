@@ -226,6 +226,12 @@ pub enum SessionCommand {
         /// instead of every project.
         #[arg(long, requires = "retrieve")]
         this_project_only: bool,
+        /// Write the new session for this project folder instead of the
+        /// source session's own. In a desktop app that groups conversations
+        /// by project (Antigravity), it then appears under that project in
+        /// the sidebar.
+        #[arg(long = "in", value_name = "DIR", value_hint = clap::ValueHint::DirPath)]
+        in_dir: Option<PathBuf>,
         /// Score this handoff's messages for relevance to TEXT — what the
         /// next agent is about to do — with the Jev API, and let those
         /// scores steer --jev's keep/compress/drop decisions instead of the
@@ -516,6 +522,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             budget,
             retrieve,
             this_project_only,
+            in_dir,
             task,
             explain,
             metadata,
@@ -529,6 +536,7 @@ pub fn run_session(command: SessionCommand, options: &Options) -> Result<ExitCod
             budget,
             retrieve.as_deref(),
             this_project_only,
+            in_dir.as_deref(),
             task.as_deref(),
             explain,
             &metadata,
@@ -1896,6 +1904,7 @@ fn cmd_continue(
     budget: Option<usize>,
     retrieve: Option<&str>,
     this_project_only: bool,
+    in_dir: Option<&Path>,
     task: Option<&str>,
     explain: bool,
     metadata_specs: &[String],
@@ -1905,9 +1914,7 @@ fn cmd_continue(
         query,
         this_project_only,
     });
-    let metadata = parse_metadata_specs(metadata_specs)?;
-    let metadata =
-        (!metadata.as_object().is_some_and(serde_json::Map::is_empty)).then_some(metadata);
+    let metadata = continue_metadata(metadata_specs, in_dir)?;
     let metadata = metadata.as_ref();
     // `JevPlan`: outer `None` = no `--jev`; `Some(budget)` = the flag, with
     // the optional token cap.
@@ -3043,6 +3050,50 @@ fn stamp_live_cwd(common: &mut Transcript<Common>, out: Option<&std::path::Path>
     }
 }
 
+/// The writer metadata for a `continue`: the `--metadata` specs, plus the
+/// `--in` project folder (carried under [`TARGET_DIR_KEY`], which every
+/// continue path already threads to `write_and_report`). `None` when empty.
+fn continue_metadata(
+    metadata_specs: &[String],
+    in_dir: Option<&Path>,
+) -> Result<Option<serde_json::Value>, String> {
+    let mut metadata = parse_metadata_specs(metadata_specs)?;
+    if let Some(dir) = in_dir {
+        // A folder that was moved or deleted can still be a project the
+        // desktop app lists, and the app matches projects by this path, so an
+        // absolute path that no longer exists is accepted (with a note).
+        let dir = match dir.canonicalize() {
+            Ok(dir) if dir.is_dir() => dir,
+            _ if dir.is_absolute() => {
+                eprintln!(
+                    "{} --in {} does not exist on disk; using it only to place the session \
+                     in that project",
+                    style::dim("note:", style::enabled_err()),
+                    dir.display()
+                );
+                dir.to_path_buf()
+            }
+            _ => {
+                return Err(format!(
+                    "--in {}: not an existing folder (give an absolute path for one that \
+                     no longer exists)",
+                    dir.display()
+                ));
+            }
+        };
+        if let Some(object) = metadata.as_object_mut() {
+            object.insert(
+                TARGET_DIR_KEY.to_string(),
+                serde_json::Value::String(dir.to_string_lossy().into_owned()),
+            );
+        }
+    }
+    Ok((!metadata.as_object().is_some_and(serde_json::Map::is_empty)).then_some(metadata))
+}
+
+/// The metadata key `--in` uses to carry the target project folder.
+const TARGET_DIR_KEY: &str = "cwd";
+
 /// Write `common` as `target`'s native format, print the conversion line,
 /// and return the id to resume with.
 fn write_and_report(
@@ -3052,6 +3103,20 @@ fn write_and_report(
     out: Option<&std::path::Path>,
     metadata: Option<&serde_json::Value>,
 ) -> Result<String, String> {
+    // `--in <dir>`: the new session belongs to that project folder.
+    let retargeted;
+    let common = match metadata
+        .and_then(|m| m.get(TARGET_DIR_KEY))
+        .and_then(serde_json::Value::as_str)
+    {
+        Some(dir) => {
+            let mut copy = common.clone();
+            copy.meta.cwd = Some(dir.to_string());
+            retargeted = copy;
+            &retargeted
+        }
+        None => common,
+    };
     let written = local::write_with(
         target,
         common,

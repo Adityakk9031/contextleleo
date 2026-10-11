@@ -195,7 +195,7 @@ contextleleo continue <id> --jev --retrieve "task text" [--budget N] [--no-resum
 - `continue_session` skips in-place resume when `--retrieve` is set (~2274: `&& retrieve.is_none()`) — the enriched copy is written fresh.
 - The pick flow (query.rs pick path) passes `None` for the new `continue_session` param, so interactive pick behavior is unchanged.
 
-## 9. Tests — 592 passing, 0 failing (this is the verified state)
+## 9. Tests — 593 passing, 0 failing (this is the verified state)
 
 **Command:** `cargo test --workspace --all-features` → exit 0. Tallies: **191 lib + 259 integration + 9 regression + 125 cli lib + 2 compile-fail doctests = 574 passed; 0 failed; 1 ignored** (that one is the transcript.rs doc-test; this section was written at 530 — the §18 Jev stage, the §19 demo kit and exclusion/redaction tests, the Jev client retry, and §20 task-aware trimming grew it, latest full run 2026-10-09). Doc-tests include two `compile_fail` examples (chatgpt + claude_chat) that pass as designed.
 
@@ -833,3 +833,24 @@ the feature: `context` already searched every project. **Change:** `RetrievalOpt
 (default `retrieval::MIN_JEV_RELEVANCE = 0.7`) drops chunks Jev only barely accepts (0.5–0.7) in `reconcile`;
 Jev's own yes/no line stays 0.5. Tests: `chunks_jev_only_barely_accepts_are_left_out_by_default`; two existing
 tests adjusted to realistic Jev answers. Suite: 592 passed / 0 failed.
+
+## 29. Antigravity: join the app's project, and `--in <folder>` (2026-10-11)
+
+**Why the sidebar did not show handoffs.** Antigravity groups conversations by a *project id* stored inside each
+conversation (`trajectory_metadata_blob.main`, protobuf field 18) and listed in `conversation_summaries.db`
+(`project_id`). Its own sessions carry the app's id for their workspace (LicenseShield-AI = `cf339480-…`); the
+writer hard-coded `default-cli-project`, a project the sidebar does not list, so handoffs appeared only under
+*Conversation History*. (Compared the app's native LicenseShield conversation with ours byte for byte.)
+
+**Changes.** `antigravity::app_project_id(root, cwd)` reads the app's index for the folder's project id (tries the
+plain and `%20`-encoded URI; ignores the CLI default). `AntigravityStore::save` regenerates the `main` metadata
+with that id when the blob carries the synthesized default. `continue --in <folder>` sets the new session's
+project folder (carried through the metadata channel, applied in `write_and_report`; an absolute path that no
+longer exists is accepted with a note, because the app matches by path). Test
+`a_conversation_joins_the_apps_project_for_its_folder`; `cmd_continue` argument handling moved to
+`continue_metadata`. Suite: 593 passed / 0 failed.
+
+**Verified (real Antigravity store):** `continue a29982de --retrieve … --in …/LicenseShield-AI --with antigravity`
+wrote `10e260a3` with workspace `LicenseShield-AI` and project id `cf339480-db39-47d7-a2d1-0b619941ca44`, 981 steps;
+12 chunks retrieved (liquiguard-somnia ×8, jev cli ×3, agent ×1). Appearance under the project in the app needs a
+relaunch (the app re-indexes at startup) and is to be confirmed by the user.
